@@ -8,6 +8,7 @@ from app.config import settings
 from app.database import init_db
 from app.api.auth import router as auth_router
 from app.api.projects import router as projects_router
+from app.api.scans import router as scans_router
 
 
 @asynccontextmanager
@@ -36,6 +37,7 @@ app.add_middleware(
 # Routers
 app.include_router(auth_router, prefix="/api")
 app.include_router(projects_router, prefix="/api")
+app.include_router(scans_router, prefix="/api")
 
 
 @app.get("/api/health")

@@ -3,28 +3,22 @@ version: "3.8"
 services:
   frontend:
     build: ./frontend
-    ports:
-      - 80:80
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.geotrack-front.rule=Host(`geotrack.deloffre.fr`)"
-      - "traefik.http.routers.geotrack-front.entrypoints=web"
-      - "traefik.http.routers.geotrack-front-secure.rule=Host(`geotrack.deloffre.fr`)"
-      - "traefik.http.routers.geotrack-front-secure.entrypoints=websecure"
-      - "traefik.http.routers.geotrack-front-secure.tls=true"
-      - "traefik.http.routers.geotrack-front-secure.tls.certResolver=letsencrypt"
+      - "traefik.http.routers.geotrack-front.entrypoints=websecure"
+      - "traefik.http.routers.geotrack-front.tls=true"
+      - "traefik.http.routers.geotrack-front.tls.certResolver=letsencrypt"
       - "traefik.http.services.geotrack-front.loadbalancer.server.port=80"
+      - "traefik.http.routers.geotrack-front.middlewares=redirect-https"
 
   backend:
     build: ./backend
-    ports:
-      - 8000:8000
     environment:
       - DATABASE_URL=postgresql+asyncpg://geotrack:geotrack_pass@db:5432/geotrack
       - REDIS_URL=redis://redis:6379/0
-      - JWT_SECRET=change-me-in-production
-      - OPENROUTER_API_KEY=
-      - CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+      - JWT_SECRET=change...on
+      - OPENROUTER_API_KEY=***      - CORS_ORIGINS=http://localhost:5173,http://localhost:3000,https://geotrack.deloffre.fr
       - ENVIRONMENT=production
     depends_on:
       db:
@@ -34,11 +28,9 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.geotrack-api.rule=Host(`geotrack.deloffre.fr`) && PathPrefix(`/api`)"
-      - "traefik.http.routers.geotrack-api.entrypoints=web"
-      - "traefik.http.routers.geotrack-api-secure.rule=Host(`geotrack.deloffre.fr`) && PathPrefix(`/api`)"
-      - "traefik.http.routers.geotrack-api-secure.entrypoints=websecure"
-      - "traefik.http.routers.geotrack-api-secure.tls=true"
-      - "traefik.http.routers.geotrack-api-secure.tls.certResolver=letsencrypt"
+      - "traefik.http.routers.geotrack-api.entrypoints=websecure"
+      - "traefik.http.routers.geotrack-api.tls=true"
+      - "traefik.http.routers.geotrack-api.tls.certResolver=letsencrypt"
       - "traefik.http.services.geotrack-api.loadbalancer.server.port=8000"
 
   db:

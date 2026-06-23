@@ -1,11 +1,10 @@
-version: '3.8'
+version: "3.8"
+
 services:
   frontend:
-    image: nginx:alpine
+    build: ./frontend
     ports:
-      - "80:80"
-    volumes:
-      - ./frontend/dist:/usr/share/nginx/html:ro
+      - 80:80
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.geotrack-front.rule=Host(`geotrack.deloffre.fr`)"
@@ -19,11 +18,19 @@ services:
   backend:
     build: ./backend
     ports:
-      - "8000:8000"
-    env_file: ./backend/.env
+      - 8000:8000
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://geotrack:geotrack_pass@db:5432/geotrack
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET=change-me-in-production
+      - OPENROUTER_API_KEY=
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+      - ENVIRONMENT=production
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.geotrack-api.rule=Host(`geotrack.deloffre.fr`) && PathPrefix(`/api`)"
@@ -40,6 +47,11 @@ services:
       POSTGRES_DB: geotrack
       POSTGRES_USER: geotrack
       POSTGRES_PASSWORD: geotrack_pass
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U geotrack"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     volumes:
       - pgdata:/var/lib/postgresql/data
 
@@ -48,3 +60,8 @@ services:
 
 volumes:
   pgdata:
+
+networks:
+  default:
+    name: dokploy-network
+    external: true

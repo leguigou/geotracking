@@ -1,0 +1,50 @@
+version: '3.8'
+services:
+  frontend:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./frontend/dist:/usr/share/nginx/html:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.geotrack-front.rule=Host(`geotrack.deloffre.fr`)"
+      - "traefik.http.routers.geotrack-front.entrypoints=web"
+      - "traefik.http.routers.geotrack-front-secure.rule=Host(`geotrack.deloffre.fr`)"
+      - "traefik.http.routers.geotrack-front-secure.entrypoints=websecure"
+      - "traefik.http.routers.geotrack-front-secure.tls=true"
+      - "traefik.http.routers.geotrack-front-secure.tls.certResolver=letsencrypt"
+      - "traefik.http.services.geotrack-front.loadbalancer.server.port=80"
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    env_file: ./backend/.env
+    depends_on:
+      - db
+      - redis
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.geotrack-api.rule=Host(`geotrack.deloffre.fr`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.geotrack-api.entrypoints=web"
+      - "traefik.http.routers.geotrack-api-secure.rule=Host(`geotrack.deloffre.fr`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.geotrack-api-secure.entrypoints=websecure"
+      - "traefik.http.routers.geotrack-api-secure.tls=true"
+      - "traefik.http.routers.geotrack-api-secure.tls.certResolver=letsencrypt"
+      - "traefik.http.services.geotrack-api.loadbalancer.server.port=8000"
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: geotrack
+      POSTGRES_USER: geotrack
+      POSTGRES_PASSWORD: geotrack_pass
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+
+volumes:
+  pgdata:

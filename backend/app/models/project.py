@@ -16,11 +16,13 @@ class Project(Base):
     organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     target_url: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     brand_names: Mapped[list] = mapped_column(JSON, default=list)
     enabled_models: Mapped[list] = mapped_column(JSON, default=list)
     frequency: Mapped[str] = mapped_column(String(20), default="daily")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     active_scan_jobs: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
+    last_scheduled_scan_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     prompts = relationship("Prompt", back_populates="project", cascade="all, delete-orphan", lazy="selectin")

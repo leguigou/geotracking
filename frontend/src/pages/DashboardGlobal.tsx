@@ -1,30 +1,35 @@
-import { useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import StatsCard from '../components/StatsCard';
 import TrendChart from '../components/TrendChart';
 import ProjectMatrix from '../components/ProjectMatrix';
-import { useProjects } from '../hooks/useApi';
+import { api, type DashboardOverview } from '../lib/api';
 
 export default function DashboardGlobal() {
   const { t } = useTranslation();
   const navigate = useNavigate();
 
-  const { data: projects, loading: loadingProjects } = useProjects();
-  const projectsList = projects ?? [];
+  const [overview, setOverview] = useState<DashboardOverview | null>(null);
+  const [loadingProjects, setLoadingProjects] = useState(true);
 
-  /* ── KPI cards ──────────────────────────────────────────── */
-  const totalPrompts = useMemo(() => {
-    if (!projectsList.length) return '0';
-    return `${projectsList.length * 5}+`;
-  }, [projectsList]);
+  useEffect(() => {
+    let cancelled = false;
+    api.getDashboardOverview()
+      .then((data) => { if (!cancelled) setOverview(data); })
+      .finally(() => { if (!cancelled) setLoadingProjects(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const projectsList = overview?.projects ?? [];
+  const totals = overview?.totals ?? { projects: 0, active_projects: 0, prompts: 0, average_sov: 0, failed_jobs: 0 };
 
   const kpiCards = [
     {
       title: t('global.projects'),
-      value: loadingProjects ? '…' : `${projectsList.length}`,
+      value: loadingProjects ? '…' : `${totals.projects}`,
       trend: projectsList.length > 0
-        ? `${projectsList.length} ${t('global.thisWeek')}`
+        ? `${totals.active_projects} actifs`
         : loadingProjects ? '' : 'Aucun projet',
       icon: (
         <svg className="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
@@ -35,8 +40,8 @@ export default function DashboardGlobal() {
     },
     {
       title: t('global.prompts'),
-      value: loadingProjects ? '…' : totalPrompts,
-      trend: '+12.3% ' + t('global.vsLastMonth'),
+      value: loadingProjects ? '…' : String(totals.prompts),
+      trend: 'prompts configurés',
       icon: (
         <svg className="w-5 h-5 text-violet-600 dark:text-violet-400" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
@@ -46,8 +51,8 @@ export default function DashboardGlobal() {
     },
     {
       title: t('global.sov'),
-      value: loadingProjects ? '…' : '—',
-      trend: '+5.8% ' + t('global.vsLastMonth'),
+      value: loadingProjects ? '…' : `${totals.average_sov}%`,
+      trend: 'moyenne des derniers scans',
       icon: (
         <svg className="w-5 h-5 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
@@ -57,8 +62,8 @@ export default function DashboardGlobal() {
     },
     {
       title: t('global.alerts'),
-      value: '0',
-      trend: t('global.urgent'),
+      value: String(totals.failed_jobs),
+      trend: totals.failed_jobs ? t('global.urgent') : 'Aucune erreur',
       trendColor: 'text-slate-500 dark:text-slate-400',
       icon: (
         <svg className="w-5 h-5 text-slate-600 dark:text-slate-400" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
@@ -72,22 +77,46 @@ export default function DashboardGlobal() {
   /* ── Matrix rows from real projects ─────────────────────── */
   const matrixProjects = projectsList.map((p) => ({
     name: p.name,
-    chatgpt: 0,
-    claude: 0,
-    perplexity: 0,
-    gemini: 0,
-    sovAvg: 0,
+    chatgpt: p.overall.chatgpt ?? null,
+    claude: p.overall.claude ?? null,
+    perplexity: p.overall.perplexity ?? null,
+    gemini: p.overall.gemini ?? null,
+    grok: p.overall.grok ?? null,
+    deepseek: p.overall.deepseek ?? null,
+    sovAvg: Math.round(Object.values(p.overall).reduce((a, b) => a + b, 0) /
+      Math.max(1, Object.keys(p.overall).length)),
     onClick: () => navigate(`/project/${p.id}`),
   }));
 
-  /* ── Trend chart (fallback static data) ─────────────────── */
-  const chartLabels = ['J-30', 'J-25', 'J-20', 'J-15', 'J-10', 'J-5', "Aujourd'hui"];
+  const globalHistory = overview?.trend ?? [];
+  const chartLabels = globalHistory.map((entry) => new Date(entry.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }));
   const chartDatasets = [
-    { label: 'ChatGPT', data: [28, 32, 30, 35, 38, 40, 42], borderColor: '#3b82f6' },
-    { label: 'Claude', data: [22, 25, 24, 28, 33, 35, 38], borderColor: '#8b5cf6' },
-    { label: 'Perplexity', data: [8, 10, 9, 11, 13, 14, 15], borderColor: '#10b981' },
-    { label: 'Gemini', data: [4, 5, 4, 6, 7, 7, 8], borderColor: '#f59e0b' },
+    { label: 'ChatGPT', data: globalHistory.map((entry) => Number(entry.chatgpt ?? 0)), borderColor: '#3b82f6' },
+    { label: 'Claude', data: globalHistory.map((entry) => Number(entry.claude ?? 0)), borderColor: '#8b5cf6' },
+    { label: 'Perplexity', data: globalHistory.map((entry) => Number(entry.perplexity ?? 0)), borderColor: '#10b981' },
+    { label: 'Gemini', data: globalHistory.map((entry) => Number(entry.gemini ?? 0)), borderColor: '#f59e0b' },
+    { label: 'Grok', data: globalHistory.map((entry) => Number(entry.grok ?? 0)), borderColor: '#0ea5e9' },
+    { label: 'DeepSeek', data: globalHistory.map((entry) => Number(entry.deepseek ?? 0)), borderColor: '#f97316' },
   ];
+
+  const exportCsv = () => {
+    const providers = ['chatgpt', 'claude', 'perplexity', 'gemini', 'grok', 'deepseek'];
+    const rows = [
+      ['Projet', ...providers, 'SOV moyenne'],
+      ...projectsList.map((project) => {
+        const values = providers.map((provider) => project.overall[provider] ?? 'N/A');
+        const available = Object.values(project.overall);
+        const average = available.length ? Math.round(available.reduce((sum, value) => sum + value, 0) / available.length) : 0;
+        return [project.name, ...values, average];
+      }),
+    ];
+    const csv = rows.map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(',')).join('\n');
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    link.download = `geotrack-dashboard-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
 
   return (
     <div>
@@ -117,11 +146,13 @@ export default function DashboardGlobal() {
       <div className="glass-card rounded-xl p-5 mb-8">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-semibold text-slate-900 dark:text-white">{t('global.trendTitle')}</h2>
-          <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400">
+          <div className="flex flex-wrap items-center justify-end gap-3 text-xs text-slate-500 dark:text-slate-400">
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-blue-500" /> ChatGPT</span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-violet-500" /> Claude</span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-emerald-500" /> Perplexity</span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-amber-500" /> Gemini</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-sky-500" /> Grok</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-orange-500" /> DeepSeek</span>
           </div>
         </div>
         <TrendChart chartId="trendGlobal" labels={chartLabels} datasets={chartDatasets} />
@@ -130,7 +161,7 @@ export default function DashboardGlobal() {
       <div className="glass-card rounded-xl p-5 mb-8">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-semibold text-slate-900 dark:text-white">{t('global.matrixTitle')}</h2>
-          <button className="btn-ghost inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-all duration-200 text-xs">
+          <button onClick={exportCsv} className="btn-ghost inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-all duration-200 text-xs">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
             <span>{t('global.export')}</span>
           </button>

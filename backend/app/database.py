@@ -40,5 +40,5 @@ async def get_db():
 async def init_db():
     """Create all tables."""
     async with engine.begin() as conn:
-        from app.models import user, project, scan_result  # noqa
+        import app.models  # noqa: F401
         await conn.run_sync(Base.metadata.create_all)

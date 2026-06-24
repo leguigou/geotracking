@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import api from '../lib/api';
+import api, { type OpenRouterModel } from '../lib/api';
 
 const steps = ['create.step1', 'create.step2', 'create.step3', 'create.step4'] as const;
 
@@ -14,6 +14,18 @@ const llms = [
   { id: 'deepseek', label: 'DeepSeek', sublabel: 'DeepSeek V3, R1', letter: 'D', color: 'text-orange-600 dark:text-orange-400', bg: 'bg-orange-500/10' },
 ];
 
+const providerPrefixes: Record<string, string> = {
+  chatgpt: 'openai/', claude: 'anthropic/', perplexity: 'perplexity/',
+  gemini: 'google/', grok: 'x-ai/', deepseek: 'deepseek/',
+};
+
+const modelPrice = (model?: OpenRouterModel) => {
+  if (!model) return '';
+  const input = Number(model.pricing.prompt ?? 0) * 1_000_000;
+  const output = Number(model.pricing.completion ?? 0) * 1_000_000;
+  return `$${input.toFixed(2)} / $${output.toFixed(2)} par M tokens`;
+};
+
 export default function CreateProject() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -24,7 +36,12 @@ export default function CreateProject() {
   const [name, setName] = useState('');
   const [targetUrl, setTargetUrl] = useState('');
   const [description, setDescription] = useState('');
+  const [frequency, setFrequency] = useState('weekly');
   const [selectedLlms, setSelectedLlms] = useState<string[]>(['chatgpt', 'claude', 'perplexity']);
+  const [modelPresets, setModelPresets] = useState<Record<string, OpenRouterModel>>({});
+  const [availableModels, setAvailableModels] = useState<OpenRouterModel[]>([]);
+  const [selectedModels, setSelectedModels] = useState<Record<string, string>>({});
+  const [loadingModels, setLoadingModels] = useState(true);
   const [themeGroups, setThemeGroups] = useState<{ theme: string; keywords: string[] }[]>([
     { theme: '', keywords: [] },
   ]);
@@ -76,6 +93,21 @@ export default function CreateProject() {
 
   const totalKeywords = themeGroups.reduce((sum, g) => sum + g.keywords.length, 0);
 
+  useEffect(() => {
+    api.getAvailableModels()
+      .then((data) => {
+        const recommended = data.recommended || {};
+        setModelPresets(recommended);
+        setAvailableModels(data.models);
+        setSelectedModels(Object.fromEntries(Object.entries(recommended).map(([provider, model]) => [provider, model.id])));
+        setSelectedLlms((current) => {
+          const available = current.filter((provider) => recommended[provider]);
+          return available.length > 0 ? available : Object.keys(recommended).slice(0, 3);
+        });
+      })
+      .finally(() => setLoadingModels(false));
+  }, []);
+
   const goNext = () => {
     if (step < 4) setStep(step + 1);
   };
@@ -93,11 +125,19 @@ export default function CreateProject() {
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
+      const enabledModels = selectedLlms
+        .map((provider) => selectedModels[provider] || modelPresets[provider]?.id)
+        .filter((model): model is string => Boolean(model));
+      if (enabledModels.length === 0) {
+        throw new Error('Aucun modèle OpenRouter valide n’est disponible');
+      }
       const project = (await api.createProject({
         name,
         target_url: targetUrl,
         description: description || undefined,
-        llms: selectedLlms,
+        brand_names: [name],
+        enabled_models: enabledModels,
+        frequency,
       })) as { id: string };
 
       // Créer les prompts par groupe de thématique
@@ -114,6 +154,12 @@ export default function CreateProject() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const runsPerMonth: Record<string, number> = { daily: 30, weekly: 4.3, biweekly: 2.2, monthly: 1 };
+  const monthlyRequests = Math.ceil(totalKeywords * selectedLlms.length * (runsPerMonth[frequency] ?? 1));
+  const frequencyLabels: Record<string, string> = {
+    daily: 'Quotidienne', weekly: 'Hebdomadaire', biweekly: 'Toutes les deux semaines', monthly: 'Mensuelle',
   };
 
   return (
@@ -218,6 +264,15 @@ export default function CreateProject() {
                 onChange={(e) => setDescription(e.target.value)}
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Fréquence automatique</label>
+              <select className="input-field w-full" value={frequency} onChange={(event) => setFrequency(event.target.value)}>
+                <option value="daily">Quotidienne</option>
+                <option value="weekly">Hebdomadaire</option>
+                <option value="biweekly">Toutes les deux semaines</option>
+                <option value="monthly">Mensuelle</option>
+              </select>
+            </div>
           </div>
           <div className="flex justify-end mt-6">
             <button onClick={goNext} className="btn-primary" disabled={!name || !targetUrl}>
@@ -235,7 +290,9 @@ export default function CreateProject() {
               {t('create.selectLLMs')}
             </h2>
             <div className="space-y-3">
-              {llms.map((llm) => (
+              {llms.map((llm) => {
+                const preset = modelPresets[llm.id];
+                return (
                 <label
                   key={llm.id}
                   className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
@@ -245,6 +302,7 @@ export default function CreateProject() {
                     className="rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500"
                     checked={selectedLlms.includes(llm.id)}
                     onChange={() => toggleLlm(llm.id)}
+                    disabled={!preset}
                   />
                   <div className="flex items-center gap-2.5">
                     <div
@@ -256,18 +314,32 @@ export default function CreateProject() {
                       <p className="text-sm font-medium text-slate-900 dark:text-white">
                         {llm.label}
                       </p>
-                      <p className="text-xs text-slate-500">{llm.sublabel}</p>
+                      <p className="text-xs text-slate-500">
+                        {loadingModels ? 'Recherche du modèle OpenRouter…' : modelPrice(availableModels.find((model) => model.id === selectedModels[llm.id])) || 'Indisponible sur OpenRouter'}
+                      </p>
+                      {preset && (
+                        <select
+                          className="input-field text-xs mt-2 w-full"
+                          value={selectedModels[llm.id] || preset.id}
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={(event) => setSelectedModels((current) => ({ ...current, [llm.id]: event.target.value }))}
+                        >
+                          {availableModels
+                            .filter((model) => model.id.startsWith(providerPrefixes[llm.id]))
+                            .map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
+                        </select>
+                      )}
                     </div>
                   </div>
                 </label>
-              ))}
+              );})}
             </div>
           </div>
           <div className="flex justify-between mt-6">
             <button onClick={goBack} className="btn-secondary">
               {t('create.back')}
             </button>
-            <button onClick={goNext} className="btn-primary" disabled={selectedLlms.length === 0}>
+            <button onClick={goNext} className="btn-primary" disabled={selectedLlms.length === 0 || loadingModels}>
               {t('create.next')}
             </button>
           </div>
@@ -417,6 +489,10 @@ export default function CreateProject() {
                 </p>
               </div>
               <div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Fréquence</p>
+                <p className="font-medium text-slate-900 dark:text-white mt-0.5">{frequencyLabels[frequency]}</p>
+              </div>
+              <div>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   {t('create.url')}
                 </p>
@@ -452,10 +528,9 @@ export default function CreateProject() {
                 <p className="font-medium text-amber-800 dark:text-amber-300">
                   {t('create.creditInfo')}
                 </p>
-                <p
-                  className="text-amber-700 dark:text-amber-400 text-xs mt-0.5"
-                  dangerouslySetInnerHTML={{ __html: t('create.creditDetail') }}
-                />
+                <p className="text-amber-700 dark:text-amber-400 text-xs mt-0.5">
+                  Environ {monthlyRequests} appels OpenRouter par mois ({totalKeywords} prompt{totalKeywords > 1 ? 's' : ''} × {selectedLlms.length} modèle{selectedLlms.length > 1 ? 's' : ''}).
+                </p>
               </div>
             </div>
           </div>

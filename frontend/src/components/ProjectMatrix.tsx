@@ -2,10 +2,12 @@ import Badge from './Badge';
 
 interface ProjectRow {
   name: string;
-  chatgpt: number;
-  claude: number;
-  perplexity: number;
-  gemini: number;
+  chatgpt: number | null;
+  claude: number | null;
+  perplexity: number | null;
+  gemini: number | null;
+  grok: number | null;
+  deepseek: number | null;
   sovAvg: number;
   onClick?: () => void;
 }
@@ -14,7 +16,8 @@ interface ProjectMatrixProps {
   projects: ProjectRow[];
 }
 
-function sovBadge(val: number) {
+function sovBadge(val: number | null) {
+  if (val == null) return <Badge variant="slate">N/A</Badge>;
   if (val >= 30) return <Badge variant="emerald">{val}%</Badge>;
   if (val >= 10) return <Badge variant="amber">{val}%</Badge>;
   return <Badge variant="red">{val}%</Badge>;
@@ -31,6 +34,8 @@ export default function ProjectMatrix({ projects }: ProjectMatrixProps) {
             <th className="px-4 py-3 text-left">Claude</th>
             <th className="px-4 py-3 text-left">Perplexity</th>
             <th className="px-4 py-3 text-left">Gemini</th>
+            <th className="px-4 py-3 text-left">Grok</th>
+            <th className="px-4 py-3 text-left">DeepSeek</th>
             <th className="px-4 py-3 text-right">SOV Moy.</th>
           </tr>
         </thead>
@@ -46,6 +51,8 @@ export default function ProjectMatrix({ projects }: ProjectMatrixProps) {
               <td className="px-4 py-3">{sovBadge(p.claude)}</td>
               <td className="px-4 py-3">{sovBadge(p.perplexity)}</td>
               <td className="px-4 py-3">{sovBadge(p.gemini)}</td>
+              <td className="px-4 py-3">{sovBadge(p.grok)}</td>
+              <td className="px-4 py-3">{sovBadge(p.deepseek)}</td>
               <td className="px-4 py-3 text-right font-semibold text-slate-900 dark:text-white">{p.sovAvg}%</td>
             </tr>
           ))}

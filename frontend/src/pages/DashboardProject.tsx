@@ -5,32 +5,39 @@ import TrendChart from '../components/TrendChart';
 import PromptMatrix from '../components/PromptMatrix';
 import InspectModal from '../components/InspectModal';
 import { useProject, usePrompts } from '../hooks/useApi';
-import { api } from '../lib/api';
+import { api, type LatestResultsData, type HistoryEntry, type OpenRouterModel } from '../lib/api';
 import ManagePrompts from '../components/ManagePrompts';
 import ScanHistory from '../components/ScanHistory';
 
 const LLM_DEFS = [
-  { id: 'chatgpt', label: 'ChatGPT', model: 'GPT-4o / GPT-4-turbo', letter: 'C', barColor: 'bg-emerald-500', iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-600 dark:text-emerald-400', chartColor: '#3b82f6' },
-  { id: 'claude', label: 'Claude', model: 'Claude 3 Opus / Sonnet', letter: 'C', barColor: 'bg-violet-500', iconBg: 'bg-violet-500/10', iconColor: 'text-violet-600 dark:text-violet-400', chartColor: '#8b5cf6' },
-  { id: 'perplexity', label: 'Perplexity', model: 'Perplexity Pro', letter: 'P', barColor: 'bg-amber-500', iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-600 dark:text-emerald-400', chartColor: '#10b981' },
-  { id: 'gemini', label: 'Gemini', model: 'Gemini 1.5 Pro', letter: 'G', barColor: 'bg-red-500', iconBg: 'bg-red-500/10', iconColor: 'text-red-600 dark:text-red-400', chartColor: '#f59e0b' },
-  { id: 'deepseek', label: 'DeepSeek', model: 'DeepSeek V3, R1', letter: 'D', barColor: 'bg-orange-500', iconBg: 'bg-orange-500/10', iconColor: 'text-orange-600 dark:text-orange-400', chartColor: '#f97316' },
+  { id: 'chatgpt', label: 'ChatGPT', model: 'OpenAI via OpenRouter', letter: 'C', barColor: 'bg-emerald-500', iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-600 dark:text-emerald-400', chartColor: '#3b82f6' },
+  { id: 'claude', label: 'Claude', model: 'Anthropic via OpenRouter', letter: 'C', barColor: 'bg-violet-500', iconBg: 'bg-violet-500/10', iconColor: 'text-violet-600 dark:text-violet-400', chartColor: '#8b5cf6' },
+  { id: 'perplexity', label: 'Perplexity', model: 'Perplexity via OpenRouter', letter: 'P', barColor: 'bg-amber-500', iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-600 dark:text-emerald-400', chartColor: '#10b981' },
+  { id: 'gemini', label: 'Gemini', model: 'Google via OpenRouter', letter: 'G', barColor: 'bg-red-500', iconBg: 'bg-red-500/10', iconColor: 'text-red-600 dark:text-red-400', chartColor: '#f59e0b' },
+  { id: 'grok', label: 'Grok', model: 'xAI via OpenRouter', letter: 'X', barColor: 'bg-sky-500', iconBg: 'bg-sky-500/10', iconColor: 'text-sky-600 dark:text-sky-400', chartColor: '#0ea5e9' },
+  { id: 'deepseek', label: 'DeepSeek', model: 'DeepSeek via OpenRouter', letter: 'D', barColor: 'bg-orange-500', iconBg: 'bg-orange-500/10', iconColor: 'text-orange-600 dark:text-orange-400', chartColor: '#f97316' },
 ];
 
-interface HistoryEntry {
-  scan_date: string;
-  chatgpt?: number;
-  claude?: number;
-  perplexity?: number;
-  gemini?: number;
-  [key: string]: unknown;
-}
+const providerKey = (modelId: string) => {
+  if (modelId.startsWith('openai/')) return 'chatgpt';
+  if (modelId.startsWith('anthropic/')) return 'claude';
+  if (modelId.startsWith('perplexity/')) return 'perplexity';
+  if (modelId.startsWith('google/')) return 'gemini';
+  if (modelId.startsWith('x-ai/')) return 'grok';
+  if (modelId.startsWith('deepseek/')) return 'deepseek';
+  return modelId.split('/')[0];
+};
 
-interface LatestResult {
-  scan_date?: string;
-  overall?: Record<string, number>;
-  prompts?: Array<Record<string, unknown>>;
-  [key: string]: unknown;
+const apiErrorMessage = (error: unknown) => {
+  const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+  return detail || (error instanceof Error ? error.message : 'Une erreur inattendue est survenue');
+};
+
+interface PromptRowData {
+  id: string;
+  prompt: string;
+  date: string;
+  [key: string]: string | number | undefined;
 }
 
 export default function DashboardProject() {
@@ -38,12 +45,16 @@ export default function DashboardProject() {
   const { id } = useParams<{ id: string }>();
   const [period, setPeriod] = useState('last30d');
   const [selectedTheme, setSelectedTheme] = useState<string | null>(null);
+  const { data: project, loading: loadingProject } = useProject(id);
+  const { data: promptsRaw, loading: loadingPrompts } = usePrompts(id);
 
   /* ── Actions projet ────────────────────────────────────────── */
   const [showActions, setShowActions] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState('');
   const [editUrl, setEditUrl] = useState('');
+  const [editModels, setEditModels] = useState<string[]>([]);
+  const [modelCatalog, setModelCatalog] = useState<OpenRouterModel[]>([]);
   const [savingEdit, setSavingEdit] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -66,17 +77,20 @@ export default function DashboardProject() {
     })();
   }, []);
 
+  useEffect(() => {
+    api.getAvailableModels().then((data) => setModelCatalog(data.models)).catch(() => setModelCatalog([]));
+  }, []);
+
   /* Filtrer les LLM_DEFS selon les settings */
   const activeLlmDefs = useMemo(() => {
-    if (!enabledModels) return LLM_DEFS; // pas de settings → tous
-    return LLM_DEFS.filter((llm) => enabledModels.includes(llm.id));
-  }, [enabledModels]);
+    const projectProviders = new Set((project?.enabled_models ?? []).map(providerKey));
+    return LLM_DEFS.filter((llm) =>
+      (projectProviders.size === 0 || projectProviders.has(llm.id)) &&
+      (!enabledModels || enabledModels.includes(llm.id)),
+    );
+  }, [enabledModels, project?.enabled_models]);
 
-  /* ── API data ───────────────────────────────────────────── */
-  const { data: project, loading: loadingProject } = useProject(id);
-  const { data: promptsRaw, loading: loadingPrompts } = usePrompts(id);
-
-  const [latest, setLatest] = useState<LatestResult | null>(null);
+  const [latest, setLatest] = useState<LatestResultsData | null>(null);
   const [loadingLatest, setLoadingLatest] = useState(true);
   const [history, setHistory] = useState<HistoryEntry[] | null>(null);
 
@@ -85,11 +99,10 @@ export default function DashboardProject() {
     if (!id) return;
     try {
       const res = await api.getLatestResults(id);
-      // getLatestResults returns unknown[] — try to extract first element or use as-is
-      if (Array.isArray(res) && res.length > 0) {
-        setLatest(res[0] as LatestResult);
-      } else if (res && typeof res === 'object' && !Array.isArray(res)) {
-        setLatest(res as unknown as LatestResult);
+      setLatest(res);
+      if (res.batch.status === 'queued' || res.batch.status === 'running') {
+        setActiveBatchId(res.batch.id);
+        setScanning(true);
       }
     } catch { /* ignore */ }
     setLoadingLatest(false);
@@ -98,16 +111,15 @@ export default function DashboardProject() {
   const fetchHistory = useCallback(async () => {
     if (!id) return;
     try {
-      const res = await api.getResults(id);
-      if (Array.isArray(res)) {
-        setHistory(res as HistoryEntry[]);
-      }
+      setHistory(await api.getScanHistory(id));
     } catch { /* ignore */ }
   }, [id]);
 
   useEffect(() => { fetchLatest(); }, [fetchLatest]);
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
   const [scanning, setScanning] = useState(false);
+  const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   /* ── API data ───────────────────────────────────────────── */
 
@@ -117,21 +129,21 @@ export default function DashboardProject() {
     const iv = setInterval(async () => {
       try {
         const res = await api.getLatestResults(id);
-        if ((Array.isArray(res) && res.length > 0) || (res && typeof res === 'object' && !Array.isArray(res))) {
-          if (Array.isArray(res) && res.length > 0) {
-            setLatest(res[0] as LatestResult);
-          } else {
-            setLatest(res as unknown as LatestResult);
+        if (!activeBatchId || res.batch.id === activeBatchId) {
+          setLatest(res);
+          if (['completed', 'failed', 'cancelled'].includes(res.batch.status)) {
+            setScanning(false);
+            setActiveBatchId(null);
+            setScanError(res.batch.failed_jobs ? `${res.batch.failed_jobs} requête(s) OpenRouter ont échoué.` : null);
+            fetchHistory();
           }
-          setScanning(false);
-          fetchHistory();
         }
       } catch {
         // still waiting
       }
     }, 5000);
     return () => clearInterval(iv);
-  }, [scanning, id, fetchHistory]);
+  }, [scanning, id, activeBatchId, fetchHistory]);
 
   /* ── Inspect modal ──────────────────────────────────────── */
   const [inspectProps, setInspectProps] = useState<{
@@ -143,36 +155,39 @@ export default function DashboardProject() {
   } | null>(null);
 
   /* ── SOV cards ──────────────────────────────────────────── */
-  const overall = latest?.overall ?? {};
+  const overall = useMemo(() => latest?.overall ?? {}, [latest]);
 
   /* ── Prompt matrix rows ─────────────────────────────────── */
   const promptRows = useMemo(() => {
     if (!promptsRaw || !Array.isArray(promptsRaw)) return [];
-    if (latest?.prompts && Array.isArray(latest.prompts)) {
-      return latest.prompts.map((pp, i) => ({
-        id: i + 1,
-        prompt: `"${String(pp.prompt_text ?? '')}"`,
-        chatgpt: Boolean(pp.chatgpt ?? false),
-        claude: Boolean(pp.claude ?? false),
-        perplexity: Boolean(pp.perplexity ?? false),
-        gemini: Boolean(pp.gemini ?? false),
-        date: latest.scan_date ? new Date(latest.scan_date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '',
-      }));
-    }
-    return (promptsRaw as Array<Record<string, unknown>>).map((p) => ({
-      id: Number(p.id ?? 0),
-      prompt: `"${String(p.text ?? '')}"`,
-      chatgpt: (overall.chatgpt ?? 0) > 0,
-      claude: (overall.claude ?? 0) > 0,
-      perplexity: (overall.perplexity ?? 0) > 0,
-      gemini: (overall.gemini ?? 0) > 0,
-      date: p.created_at ? new Date(String(p.created_at)).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '',
-    }));
-  }, [promptsRaw, latest, overall]);
+    const summaries = new Map((latest?.prompts ?? []).map((summary) => [String(summary.prompt_id), summary]));
+    const batchPending = latest?.batch.status === 'queued' || latest?.batch.status === 'running';
+    return (promptsRaw as Array<Record<string, unknown>>).map((prompt) => {
+      const promptId = String(prompt.id ?? '');
+      const summary = summaries.get(promptId);
+      const row: PromptRowData = {
+        id: promptId,
+        prompt: `"${String(prompt.text ?? '')}"`,
+        date: latest?.scan_date
+          ? new Date(latest.scan_date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+          : '',
+      };
+      for (const provider of activeLlmDefs) {
+        const detail = summary?.models?.[provider.id];
+        row[provider.id] = detail?.error
+          ? 'error'
+          : detail
+            ? detail.mentioned ? 'mentioned' : 'absent'
+            : batchPending ? 'pending' : 'not_scanned';
+        if (detail?.error) row[`${provider.id}_error`] = detail.error;
+      }
+      return row;
+    });
+  }, [promptsRaw, latest, activeLlmDefs]);
 
   /* ── Trend chart ────────────────────────────────────────── */
   const chartLabels = useMemo(() => {
-    if (!history?.length) return ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4', 'Sem 5', 'Sem 6', 'Sem 7', 'Sem 8'];
+    if (!history?.length) return [];
     return history.map((h) => {
       const d = new Date(h.scan_date);
       return `${d.getDate()}/${d.getMonth() + 1}`;
@@ -180,21 +195,14 @@ export default function DashboardProject() {
   }, [history]);
 
   const chartDatasets = useMemo(() => {
-    if (!history?.length) {
-      return [
-        { label: 'ChatGPT', data: [18, 22, 25, 28, 32, 36, 39, 42], borderColor: '#3b82f6' },
-        { label: 'Claude', data: [12, 15, 18, 22, 26, 30, 34, 38], borderColor: '#8b5cf6' },
-        { label: 'Perplexity', data: [5, 7, 8, 10, 11, 12, 14, 15], borderColor: '#10b981' },
-        { label: 'Gemini', data: [0, 0, 0, 0, 1, 0, 0, 0], borderColor: '#f59e0b', borderDash: [4, 3] },
-      ];
-    }
+    if (!history?.length) return [];
     return activeLlmDefs.map((llm) => ({
       label: llm.label,
       data: history.map((h) => Number(h[llm.id] ?? 0)),
       borderColor: llm.chartColor,
       borderDash: history.every((h) => Number(h[llm.id] ?? 0) === 0) ? [4, 3] as number[] : undefined,
     }));
-  }, [history]);
+  }, [history, activeLlmDefs]);
 
   /* ── Themes ──────────────────────────────────────────────── */
   const themes = useMemo(() => {
@@ -209,18 +217,11 @@ export default function DashboardProject() {
 
   const filteredPromptRows = useMemo(() => {
     if (!selectedTheme) return promptRows;
-    // If we have latest.prompts, filter by theme; otherwise filter promptsRaw
-    if (latest?.prompts && Array.isArray(latest.prompts)) {
-      return promptRows.filter((_, i) => {
-        const p = (promptsRaw as Array<Record<string, unknown>>)[i];
-        return String(p?.theme ?? '') === selectedTheme;
-      });
-    }
     return promptRows.filter((_, i) => {
       const p = (promptsRaw as Array<Record<string, unknown>>)[i];
       return String(p?.theme ?? '') === selectedTheme;
     });
-  }, [selectedTheme, promptRows, latest, promptsRaw]);
+  }, [selectedTheme, promptRows, promptsRaw]);
 
   /* ── Loading state ──────────────────────────────────────── */
   if (loadingProject && !project) {
@@ -256,6 +257,10 @@ export default function DashboardProject() {
                 {project?.is_active !== false ? t('project.active') : 'En pause'}
               </span>
             </p>
+            <p className="text-xs text-slate-400 mt-1">
+              Scan automatique : {project?.frequency ?? '—'}
+              {project?.last_scheduled_scan_at && ` · dernier lancement ${new Date(project.last_scheduled_scan_at).toLocaleString('fr-FR')}`}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -278,6 +283,7 @@ export default function DashboardProject() {
                     onClick={() => {
                       setEditName(project?.name || '');
                       setEditUrl(project?.target_url || '');
+                      setEditModels(project?.enabled_models ?? []);
                       setEditing(true);
                       setShowActions(false);
                     }}
@@ -350,7 +356,7 @@ export default function DashboardProject() {
                     llm: firstLlm.label,
                     prompt: firstPrompt.prompt,
                     responseSnippet: null,
-                    mentioned: Boolean(firstPrompt[firstLlm.id as keyof typeof firstPrompt]),
+                    mentioned: firstPrompt[firstLlm.id] === 'mentioned',
                     position: null,
                   });
                 }
@@ -369,8 +375,8 @@ export default function DashboardProject() {
               disabled={scanning}
             >
               <option value="">Tous les LLMs</option>
-              {activeLlmDefs.map((llm) => (
-                <option key={llm.id} value={llm.id}>{llm.label}</option>
+                  {(project?.enabled_models ?? []).map((model) => (
+                <option key={model} value={model}>{model.split('/').pop()}</option>
               ))}
             </select>
 
@@ -386,15 +392,21 @@ export default function DashboardProject() {
                   // Annuler
                   try {
                     await api.cancelScan(id);
-                  } catch { /* ignore */ }
+                    setScanError(null);
+                  } catch (error) {
+                    setScanError(apiErrorMessage(error));
+                  }
                   setScanning(false);
                   return;
                 }
                 if (!id) return;
                 setScanning(true);
+                setScanError(null);
                 try {
-                  await api.scanProject(id, scanModel || undefined);
-                } catch {
+                  const response = await api.scanProject(id, scanModel || undefined);
+                  setActiveBatchId(response.batch_id);
+                } catch (error) {
+                  setScanError(apiErrorMessage(error));
                   setScanning(false);
                 }
               }}
@@ -413,7 +425,30 @@ export default function DashboardProject() {
         </div>
       </div>
 
+      {(scanning || scanError) && (
+        <div className={`mb-6 rounded-xl border p-4 ${scanError ? 'border-amber-300 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10' : 'border-blue-200 bg-blue-50 dark:border-blue-500/30 dark:bg-blue-500/10'}`}>
+          {scanning && latest?.batch && (!activeBatchId || latest.batch.id === activeBatchId) && (
+            <>
+              <div className="flex justify-between text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">
+                <span>Scan OpenRouter en cours</span>
+                <span>{latest.batch.completed_jobs}/{latest.batch.total_jobs}</span>
+              </div>
+              <div className="h-2 rounded-full bg-blue-100 dark:bg-slate-700 overflow-hidden">
+                <div
+                  className="h-full bg-blue-600 transition-all"
+                  style={{ width: `${latest.batch.total_jobs ? (latest.batch.completed_jobs / latest.batch.total_jobs) * 100 : 0}%` }}
+                />
+              </div>
+            </>
+          )}
+          {scanError && <p className="text-sm text-amber-800 dark:text-amber-200">{scanError}</p>}
+        </div>
+      )}
+
       {/* SOV Cards */}
+      <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+        SOV : part des réponses où la marque ou le domaine du projet est cité.
+      </p>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
         {activeLlmDefs.map((llm) => {
           const sov = overall[llm.id] ?? 0;
@@ -497,7 +532,7 @@ export default function DashboardProject() {
             {selectedTheme ? `Aucun prompt pour la thématique "${selectedTheme}".` : 'Aucun prompt configuré pour ce projet.'}
           </p>
         ) : (
-          <PromptMatrix prompts={filteredPromptRows} />
+          <PromptMatrix prompts={filteredPromptRows} providers={activeLlmDefs.map(({ id, label }) => ({ id, label }))} />
         )}
       </div>
 
@@ -514,6 +549,19 @@ export default function DashboardProject() {
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">URL du site</label>
               <input type="text" className="input-field w-full" value={editUrl} onChange={(e) => setEditUrl(e.target.value)} />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Modèles OpenRouter</label>
+              <select
+                multiple
+                size={7}
+                className="input-field w-full text-xs"
+                value={editModels}
+                onChange={(event) => setEditModels(Array.from(event.target.selectedOptions, (option) => option.value))}
+              >
+                {modelCatalog.map((model) => <option key={model.id} value={model.id}>{model.name} — {model.id}</option>)}
+              </select>
+              <p className="text-xs text-slate-400 mt-1">Ctrl/Cmd + clic pour sélectionner plusieurs modèles.</p>
+            </div>
             <div className="flex justify-end gap-3 pt-2">
               <button onClick={() => setEditing(false)} className="btn-secondary">Annuler</button>
               <button
@@ -521,7 +569,7 @@ export default function DashboardProject() {
                   if (!id) return;
                   setSavingEdit(true);
                   try {
-                    await api.updateProject(id, { name: editName, target_url: editUrl });
+                    await api.updateProject(id, { name: editName, target_url: editUrl, enabled_models: editModels });
                     setEditing(false);
                     window.location.reload();
                   } catch (err) {
@@ -530,7 +578,7 @@ export default function DashboardProject() {
                     setSavingEdit(false);
                   }
                 }}
-                disabled={savingEdit || !editName || !editUrl}
+                disabled={savingEdit || !editName || !editUrl || editModels.length === 0}
                 className="btn-primary"
               >
                 {savingEdit ? 'Sauvegarde...' : 'Sauvegarder'}

@@ -2,7 +2,7 @@
 
 import uuid
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict
 
 
 class RegisterRequest(BaseModel):
@@ -28,16 +28,14 @@ class RefreshRequest(BaseModel):
 
 
 class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     email: str
     full_name: str
     role: str
     organization_id: uuid.UUID
     is_active: bool
-
-    class Config:
-        from_attributes = True
-
 
 class UpdateProfileRequest(BaseModel):
     full_name: str | None = None

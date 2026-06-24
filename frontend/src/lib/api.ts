@@ -1,7 +1,7 @@
 import axios from "axios"
 
 const client = axios.create({
-  baseURL: "https://geotrack.deloffre.fr/api",
+  baseURL: import.meta.env.VITE_API_URL || "/api",
   headers: { "Content-Type": "application/json" },
   withCredentials: true, // envoie les cookies HTTP-only
 })
@@ -51,7 +51,7 @@ client.interceptors.response.use(
     try {
       // Le refresh_token est envoyé automatiquement via le cookie HTTP-only
       const res = await axios.post(
-        "https://geotrack.deloffre.fr/api/auth/refresh",
+        `${import.meta.env.VITE_API_URL || "/api"}/auth/refresh`,
         {},
         { withCredentials: true },
       )
@@ -85,6 +85,12 @@ export interface ProjectData {
   name: string
   target_url: string
   url?: string
+  description?: string | null
+  brand_names?: string[]
+  enabled_models?: string[]
+  frequency?: string
+  is_active?: boolean
+  last_scheduled_scan_at?: string | null
   [key: string]: unknown
 }
 
@@ -102,18 +108,49 @@ export interface LlmResult {
   claude?: number | boolean
   perplexity?: number | boolean
   gemini?: number | boolean
+  grok?: number | boolean
+  deepseek?: number | boolean
+  theme?: string | null
+  models?: Record<string, {
+    model: string
+    mentioned: boolean
+    has_url: boolean
+    has_brand: boolean
+    rank?: number | null
+    error?: string | null
+  }>
   [key: string]: unknown
 }
 
 export interface LatestResultsData {
-  overall?: Record<string, number>
-  prompts?: LlmResult[]
-  scan_date?: string
+  batch: {
+    id: string
+    status: "queued" | "running" | "completed" | "failed" | "cancelled"
+    total_jobs: number
+    completed_jobs: number
+    failed_jobs: number
+    created_at: string
+    completed_at?: string | null
+  }
+  overall: Record<string, number>
+  prompts: LlmResult[]
+  scan_date: string
+  results: Array<Record<string, unknown>>
+  sov: {
+    total_scans: number
+    url_found: number
+    brand_found: number
+    sov_url: number
+    sov_brand: number
+    average_rank?: number | null
+  }
   [key: string]: unknown
 }
 
 export interface HistoryEntry {
+  batch_id: string
   scan_date: string
+  status?: string
   chatgpt?: number
   claude?: number
   perplexity?: number
@@ -175,8 +212,10 @@ export const updatePrompt = (projectId: string | number, promptId: string | numb
 
 // ── Scan ────────────────────────────────────────────────────────────
 export const scanProject = (projectId: string | number, model?: string) => {
-  const params = model ? { model } : undefined;
-  return client.post<unknown>(`/projects/${projectId}/scan`, params).then((r) => r.data);
+  return client.post<{ status: string; batch_id: string; enqueued: number }>(
+    `/projects/${projectId}/scan`,
+    { model: model || null },
+  ).then((r) => r.data)
 };
 
 export const cancelScan = (projectId: string | number) =>
@@ -189,6 +228,9 @@ export const getResults = (projectId: string | number) =>
 export const getLatestResults = (projectId: string | number) =>
   client.get<LatestResultsData>(`/projects/${projectId}/results/latest`).then((r) => r.data)
 
+export const getScanHistory = (projectId: string | number) =>
+  client.get<HistoryEntry[]>(`/projects/${projectId}/history`).then((r) => r.data)
+
 // ── Settings ────────────────────────────────────────────────────────
 export const getSettings = () =>
   client.get<Record<string, unknown>>("/settings").then((r) => r.data)
@@ -200,7 +242,43 @@ export const testOpenRouterKey = (apiKey?: string) =>
   client.post<{ status: string; message: string; models?: string[] }>("/settings/test-openrouter", { api_key: apiKey || undefined }).then((r) => r.data)
 
 export const getAvailableModels = () =>
-  client.get<{ models: { id: string; name: string; provider: string; pricing: Record<string, unknown> }[]; has_key: boolean; message: string }>("/settings/available-models").then((r) => r.data)
+  client.get<{
+    models: OpenRouterModel[]
+    recommended: Record<string, OpenRouterModel>
+    has_key: boolean
+    message: string
+  }>("/settings/available-models").then((r) => r.data)
+
+export interface OpenRouterModel {
+  id: string
+  name: string
+  provider: string
+  pricing: Record<string, unknown>
+  context_length?: number | null
+  supported_parameters?: string[]
+}
+
+export interface DashboardOverview {
+  totals: {
+    projects: number
+    active_projects: number
+    prompts: number
+    average_sov: number
+    failed_jobs: number
+  }
+  projects: Array<{
+    id: string
+    name: string
+    is_active: boolean
+    prompt_count: number
+    overall: Record<string, number>
+    batch: { id: string; status: string; failed_jobs: number; scan_date: string } | null
+  }>
+  trend: Array<{ date: string; [key: string]: string | number }>
+}
+
+export const getDashboardOverview = () =>
+  client.get<DashboardOverview>("/dashboard/overview").then((response) => response.data)
 
 export const rewritePrompt = (text: string, model: string) =>
   client.post<{ rewritten: string }>("/settings/rewrite-prompt", { text, model }).then((r) => r.data)
@@ -227,12 +305,14 @@ export const api = {
   cancelScan,
   getResults,
   getLatestResults,
+  getScanHistory,
   getSettings,
   updateSettings,
   testOpenRouterKey,
   getAvailableModels,
   rewritePrompt,
   getAuditLogs,
+  getDashboardOverview,
 }
 
 export default api

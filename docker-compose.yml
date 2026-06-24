@@ -2,12 +2,64 @@ services:
   frontend:
     build: ./frontend
     restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      - backend
 
   backend:
     build: ./backend
     restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://geotrack:geotrack_pass@db:5432/geotrack}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173,https://geotrack.deloffre.fr}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      JWT_SECRET: ${JWT_SECRET:-super-secret-key-change-in-prod}
     depends_on:
       db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build: ./backend
+    restart: unless-stopped
+    command: ["arq", "app.services.scan_queue.WorkerSettings"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://geotrack:geotrack_pass@db:5432/geotrack}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173,https://geotrack.deloffre.fr}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      JWT_SECRET: ${JWT_SECRET:-super-secret-key-change-in-prod}
+    depends_on:
+      backend:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  scheduler:
+    build: ./backend
+    restart: unless-stopped
+    command: ["python", "-m", "app.services.scheduler"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://geotrack:geotrack_pass@db:5432/geotrack}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173,https://geotrack.deloffre.fr}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      JWT_SECRET: ${JWT_SECRET:-super-secret-key-change-in-prod}
+    depends_on:
+      backend:
         condition: service_healthy
       redis:
         condition: service_started
@@ -35,9 +87,9 @@ services:
 volumes:
   pgdata:
     name: geotrack_pgdata
-    external: true
+    external: ${DOKPLOY_EXTERNAL_RESOURCES:-false}
 
 networks:
   default:
     name: dokploy-network
-    external: true
+    external: ${DOKPLOY_EXTERNAL_RESOURCES:-false}

@@ -43,7 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Tenter un refresh via le cookie HTTP-only (même sans token local)
       try {
         const res = await axios.post(
-          "https://geotrack.deloffre.fr/api/auth/refresh",
+          `${import.meta.env.VITE_API_URL || "/api"}/auth/refresh`,
           {},
           { withCredentials: true },
         )
@@ -82,7 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       // Clear le cookie refresh côté serveur
       await axios.post(
-        "https://geotrack.deloffre.fr/api/auth/logout",
+        `${import.meta.env.VITE_API_URL || "/api"}/auth/logout`,
         {},
         { withCredentials: true },
       )
@@ -102,6 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 }
 
+// oxlint-disable-next-line react/only-export-components
 export function useAuth() {
   const ctx = useContext(AuthContext)
   if (!ctx) throw new Error("useAuth must be used within AuthProvider")

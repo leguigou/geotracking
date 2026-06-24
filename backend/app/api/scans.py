@@ -4,10 +4,11 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
+import uuid
 
 from app.database import get_db
 from app.dependencies import get_current_organization
@@ -40,6 +41,10 @@ class ScanResultResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+    @field_serializer('id', 'project_id', 'prompt_id')
+    def serialize_uuid(self, v: uuid.UUID) -> str:
+        return str(v)
 
 
 class ScanResultDetailResponse(ScanResultResponse):

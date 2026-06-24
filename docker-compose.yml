@@ -21,7 +21,8 @@ services:
       JWT_SECRET: "${JWT_SECRET:-change-me-in-dokploy-env}"
       JWT_ACCESS_EXPIRE_MINUTES: "60"
       JWT_REFRESH_EXPIRE_DAYS: "30"
-      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_API_KEY: "${OPENROUTER_API_KEY:-}"
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.geotrack-api.entrypoints=websecure"

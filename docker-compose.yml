@@ -1,9 +1,11 @@
 services:
   frontend:
     build: ./frontend
+    restart: unless-stopped
 
   backend:
     build: ./backend
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
@@ -11,14 +13,16 @@ services:
         condition: service_started
 
   db:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: geotrack
-      POSTGRES_USER: geotrack
-      POSTGRES_PASSWORD: geotrack_pass
+      POSTGRES_DB: ${POSTGRES_DB:-geotrack}
+      POSTGRES_USER: ${POSTGRES_USER:-geotrack}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-geotrack_pass}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U geotrack"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-geotrack} -d ${POSTGRES_DB:-geotrack}"]
+      start_period: 30s
+      interval: 10s
       timeout: 5s
       retries: 5
     volumes:
@@ -26,9 +30,11 @@ services:
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
 
 volumes:
   pgdata:
+    name: geotrack_pgdata
 
 networks:
   default:

@@ -10,6 +10,7 @@ import DashboardGlobal from "./pages/DashboardGlobal"
 import DashboardProject from "./pages/DashboardProject"
 import CreateProject from "./pages/CreateProject"
 import SettingsPage from "./pages/SettingsPage"
+import AuditLogsPage from "./pages/AuditLogsPage"
 import NotFound from "./pages/NotFound"
 
 /** Guarde les routes qui nécessitent une authentification */
@@ -41,6 +42,7 @@ function AppRoutes() {
           <Route path="/project/new" element={<CreateProject />} />
           <Route path="/project/:id" element={<DashboardProject />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/audit" element={<AuditLogsPage />} />
         </Route>
       </Route>
       <Route path="*" element={<NotFound />} />

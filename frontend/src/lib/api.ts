@@ -205,6 +205,9 @@ export const getAvailableModels = () =>
 export const rewritePrompt = (text: string, model: string) =>
   client.post<{ rewritten: string }>("/settings/rewrite-prompt", { text, model }).then((r) => r.data)
 
+export const getAuditLogs = () =>
+  client.get<Record<string, unknown>[]>("/audit-logs").then((r) => r.data)
+
 // ── Named export groupé pour compatibilité avec les pages existantes ─
 export const api = {
   login,
@@ -229,6 +232,7 @@ export const api = {
   testOpenRouterKey,
   getAvailableModels,
   rewritePrompt,
+  getAuditLogs,
 }
 
 export default api

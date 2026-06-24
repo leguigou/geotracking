@@ -34,6 +34,27 @@ export default function SettingsPage() {
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle');
   const [testMessage, setTestMessage] = useState('');
 
+  // Modèles disponibles (depuis OpenRouter)
+  const [availableModelIds, setAvailableModelIds] = useState<string[]>([]);
+  const [checkingModels, setCheckingModels] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await api.getAvailableModels();
+        setAvailableModelIds(data.models.map((m) => m.id));
+        setCheckingModels(false);
+      } catch {
+        setCheckingModels(false);
+      }
+    })();
+  }, []);
+
+  const isModelAvailable = (id: string) => {
+    // Vérifie si le modèle est disponible dans la liste OpenRouter
+    return availableModelIds.some((m) => m.toLowerCase().includes(id.toLowerCase()));
+  };
+
   // Profile form state
   const [fullName, setFullName] = useState('');
   const [profileEmail, setProfileEmail] = useState('');
@@ -383,8 +404,15 @@ export default function SettingsPage() {
                     checked={modelsEnabled.includes(model.id)}
                     onChange={() => toggleModel(model.id)}
                   />
-                  <span className="text-sm font-medium text-slate-900 dark:text-white">
+                  <span className="text-sm font-medium text-slate-900 dark:text-white flex items-center gap-2">
                     {model.label}
+                    {checkingModels ? (
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-pulse" />
+                    ) : isModelAvailable(model.id) ? (
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="Disponible sur OpenRouter" />
+                    ) : (
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-400" title="Non trouvé sur OpenRouter" />
+                    )}
                   </span>
                 </label>
               ))}

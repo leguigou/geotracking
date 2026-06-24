@@ -2,17 +2,13 @@ import { NavLink, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useState } from "react"
 import { useAuth } from "../hooks/useAuth"
+import { useProjects } from "../hooks/useApi"
 
 const navItems = [
   {
     to: "/",
     icon: "M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25a2.25 2.25 0 01-2.25-2.25v-2.25z",
     i18n: "nav.dashboard",
-  },
-  {
-    to: "/project/1",
-    icon: "M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5",
-    i18n: "nav.project",
   },
   {
     to: "/project/new",
@@ -30,11 +26,12 @@ export default function Sidebar() {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const { user, logout } = useAuth()
+  const { data: projects } = useProjects()
+  const [showProjects, setShowProjects] = useState(false)
   const [dark, setDark] = useState(() => {
     const saved = localStorage.getItem("theme")
     if (saved === "dark") return true
     if (saved === "light") return false
-    // Default: light mode
     document.documentElement.classList.remove("dark")
     return false
   })
@@ -98,6 +95,45 @@ export default function Sidebar() {
             <span>{t(item.i18n)}</span>
           </NavLink>
         ))}
+
+        {/* Projects list */}
+        <div className="pt-3">
+          <button
+            onClick={() => setShowProjects(!showProjects)}
+            className="flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60 transition-all"
+          >
+            <span className="flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+              </svg>
+              <span>{t('nav.projects')}</span>
+            </span>
+            <svg
+              className={`w-3.5 h-3.5 transition-transform duration-200 ${showProjects ? "rotate-90" : ""}`}
+              fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+            </svg>
+          </button>
+
+          {showProjects && (
+            <div className="ml-2 mt-1 space-y-0.5 border-l-2 border-slate-200 dark:border-slate-700 pl-2">
+              {!projects || projects.length === 0 ? (
+                <p className="text-xs text-slate-400 px-2 py-1.5">Aucun projet</p>
+              ) : (
+                projects.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => navigate(`/project/${p.id}`)}
+                    className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-white transition-all truncate"
+                  >
+                    {p.name}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
       </nav>
 
       {/* Bottom */}

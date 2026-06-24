@@ -1,47 +1,94 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import api from '../lib/api';
 
-type SettingsTab = 'api' | 'members' | 'credits';
+type SettingsTab = 'general' | 'members' | 'credits';
+
+const modelsList = [
+  { id: 'chatgpt', label: 'ChatGPT' },
+  { id: 'claude', label: 'Claude' },
+  { id: 'gemini', label: 'Gemini' },
+  { id: 'perplexity', label: 'Perplexity' },
+  { id: 'grok', label: 'Grok' },
+];
 
 export default function SettingsPage() {
-  const { t } = useTranslation();
-  const [tab, setTab] = useState<SettingsTab>('api');
-  const [webhookEnabled, setWebhookEnabled] = useState(true);
+  const { t, i18n } = useTranslation();
+  const [tab, setTab] = useState<SettingsTab>('general');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
-  const apiKeys = [
-    {
-      llm: 'OpenAI API Key',
-      keyLabel: 'sk-••••••••••••••••f3k2',
-      letter: 'C',
-      color: 'text-emerald-600 dark:text-emerald-400',
-      bg: 'bg-emerald-500/10',
-      verified: true,
-    },
-    {
-      llm: 'Anthropic API Key',
-      keyLabel: 'sk-ant-••••••••••••••••a9x1',
-      letter: 'C',
-      color: 'text-violet-600 dark:text-violet-400',
-      bg: 'bg-violet-500/10',
-      verified: true,
-    },
-    {
-      llm: 'Perplexity API Key',
-      keyLabel: 'pplx-••••••••••••••••m4n7',
-      letter: 'P',
-      color: 'text-emerald-600 dark:text-emerald-400',
-      bg: 'bg-emerald-500/10',
-      verified: true,
-    },
-    {
-      llm: 'Google AI API Key',
-      keyLabel: t('settings.configure'),
-      letter: 'G',
-      color: 'text-amber-600 dark:text-amber-400',
-      bg: 'bg-amber-500/10',
-      verified: false,
-    },
-  ];
+  // Settings form state
+  const [apiKey, setApiKey] = useState('');
+  const [modelsEnabled, setModelsEnabled] = useState<string[]>([]);
+  const [temperature, setTemperature] = useState(0.7);
+  const [frequency, setFrequency] = useState('weekly');
+  const [notifications, setNotifications] = useState(true);
+  const [language, setLanguage] = useState('fr');
+
+  // Load settings on mount
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const settings = await api.getSettings();
+        if (cancelled) return;
+        setApiKey((settings.openrouter_api_key as string) || '');
+        setModelsEnabled(
+          Array.isArray(settings.models_enabled)
+            ? (settings.models_enabled as string[])
+            : ['chatgpt', 'claude']
+        );
+        setTemperature(
+          settings.temperature != null ? Number(settings.temperature) : 0.7
+        );
+        setFrequency((settings.frequency as string) || 'weekly');
+        setNotifications(
+          settings.notifications_enabled != null
+            ? Boolean(settings.notifications_enabled)
+            : true
+        );
+        setLanguage((settings.language as string) || 'fr');
+      } catch (err) {
+        console.error('Failed to load settings:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const toggleModel = (id: string) => {
+    setModelsEnabled((prev) =>
+      prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]
+    );
+  };
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await api.updateSettings({
+        openrouter_api_key: apiKey || undefined,
+        models_enabled: modelsEnabled,
+        temperature,
+        frequency,
+        notifications_enabled: notifications,
+        language,
+      });
+      showToast('Paramètres sauvegardés');
+    } catch (err) {
+      console.error('Failed to save settings:', err);
+      alert(`Erreur : ${err instanceof Error ? err.message : 'Échec de la sauvegarde'}`);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const teamMembers = [
     {
@@ -89,13 +136,28 @@ export default function SettingsPage() {
   };
 
   const tabs: { key: SettingsTab; label: string }[] = [
-    { key: 'api', label: t('settings.api') },
+    { key: 'general', label: t('settings.general') },
     { key: 'members', label: t('settings.members') },
     { key: 'credits', label: t('settings.credits') },
   ];
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <p className="text-slate-500 dark:text-slate-400">Chargement…</p>
+      </div>
+    );
+  }
+
   return (
     <div>
+      {/* Toast notification */}
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 bg-emerald-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium animate-fade-in">
+          {toast}
+        </div>
+      )}
+
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
           {t('settings.title')}
@@ -122,100 +184,172 @@ export default function SettingsPage() {
         ))}
       </div>
 
-      {/* API Tab */}
-      {tab === 'api' && (
-        <div className="space-y-6">
-          {/* API Keys */}
-          <div className="glass-card rounded-xl p-6 space-y-5">
+      {/* General Tab — Settings form */}
+      {tab === 'general' && (
+        <div className="space-y-6 max-w-2xl">
+          {/* API & Provider */}
+          <div className="glass-card rounded-xl p-6 space-y-4">
             <div>
               <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-                {t('settings.apiKeys')}
+                API & Provider
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                {t('settings.apiKeysDesc')}
+                Configurez votre clé OpenRouter pour accéder aux modèles.
               </p>
             </div>
-            <div className="space-y-4">
-              {apiKeys.map((key, i) => (
-                <div
-                  key={i}
-                  className="flex items-center justify-between py-2"
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`w-8 h-8 rounded-lg ${key.bg} ${key.color} flex items-center justify-center text-xs font-bold`}
-                    >
-                      {key.letter}
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-slate-900 dark:text-white">
-                        {key.llm}
-                      </p>
-                      <p className="text-xs text-slate-500">{key.keyLabel}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {key.verified ? (
-                      <>
-                        <span className="badge bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
-                          {t('settings.verified')}
-                        </span>
-                        <button className="btn-ghost text-xs">
-                          {t('settings.edit')}
-                        </button>
-                      </>
-                    ) : (
-                      <button className="btn-secondary text-xs">
-                        {t('settings.configure')}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
-              <button className="btn-primary text-xs">
-                {t('settings.addKey')}
-              </button>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                OpenRouter API Key
+              </label>
+              <input
+                type="password"
+                className="input-field font-mono"
+                placeholder="sk-or-..."
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+              />
             </div>
           </div>
 
-          {/* Webhook */}
+          {/* Modèles */}
+          <div className="glass-card rounded-xl p-6 space-y-4">
+            <div>
+              <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+                Modèles
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Activez ou désactivez les LLMs à tracker.
+              </p>
+            </div>
+            <div className="space-y-2">
+              {modelsList.map((model) => (
+                <label
+                  key={model.id}
+                  className="flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                >
+                  <input
+                    type="checkbox"
+                    className="rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500"
+                    checked={modelsEnabled.includes(model.id)}
+                    onChange={() => toggleModel(model.id)}
+                  />
+                  <span className="text-sm font-medium text-slate-900 dark:text-white">
+                    {model.label}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Configuration */}
+          <div className="glass-card rounded-xl p-6 space-y-5">
+            <div>
+              <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+                Configuration
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Réglages généraux de tracking.
+              </p>
+            </div>
+            {/* Température */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                Température : {temperature.toFixed(1)}
+              </label>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.1"
+                className="w-full accent-blue-600"
+                value={temperature}
+                onChange={(e) => setTemperature(parseFloat(e.target.value))}
+              />
+              <div className="flex justify-between text-xs text-slate-400 mt-1">
+                <span>Précis (0)</span>
+                <span>Céatif (1)</span>
+              </div>
+            </div>
+            {/* Fréquence */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                Fréquence de tracking
+              </label>
+              <select
+                className="input-field"
+                value={frequency}
+                onChange={(e) => setFrequency(e.target.value)}
+              >
+                <option value="daily">Quotidien</option>
+                <option value="weekly">Hebdomadaire</option>
+                <option value="biweekly">Bi-hebdomadaire</option>
+                <option value="monthly">Mensuel</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Notifications */}
           <div className="glass-card rounded-xl p-6">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-                  {t('settings.webhook')}
+                  Notifications
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  {t('settings.webhookDesc')}
+                  Recevoir des alertes SOV par email.
                 </p>
               </div>
               <button
-                onClick={() => setWebhookEnabled(!webhookEnabled)}
+                onClick={() => setNotifications(!notifications)}
                 className={`relative inline-flex h-5 w-9 items-center rounded-full cursor-pointer transition-colors duration-200 ${
-                  webhookEnabled
+                  notifications
                     ? 'bg-blue-600'
                     : 'bg-slate-300 dark:bg-slate-600'
                 }`}
               >
                 <span
                   className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${
-                    webhookEnabled ? 'translate-x-4' : 'translate-x-0.5'
+                    notifications ? 'translate-x-4' : 'translate-x-0.5'
                   }`}
                 />
               </button>
             </div>
-            {webhookEnabled && (
-              <div className="mt-3">
-                <input
-                  type="text"
-                  className="input-field text-xs font-mono"
-                  value="https://hooks.acmecorp.com/geotrack/alerts"
-                  readOnly
-                />
+          </div>
+
+          {/* Langue */}
+          <div className="glass-card rounded-xl p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+                  Langue
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Langue de l'interface.
+                </p>
               </div>
-            )}
+              <select
+                className="input-field w-40"
+                value={language}
+                onChange={(e) => {
+                  setLanguage(e.target.value);
+                  i18n.changeLanguage(e.target.value);
+                }}
+              >
+                <option value="fr">Français</option>
+                <option value="en">English</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Save button */}
+          <div className="flex justify-end">
+            <button
+              className="btn-primary"
+              onClick={handleSave}
+              disabled={saving}
+            >
+              {saving ? 'Sauvegarde…' : 'Sauvegarder'}
+            </button>
           </div>
         </div>
       )}

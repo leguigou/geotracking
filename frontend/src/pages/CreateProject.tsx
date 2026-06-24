@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
+import api from '../lib/api';
 
 const steps = ['create.step1', 'create.step2', 'create.step3', 'create.step4'] as const;
 
@@ -8,15 +10,21 @@ const llms = [
   { id: 'claude', label: 'Claude', sublabel: 'Claude 3 Opus, Sonnet, Haiku', letter: 'C', color: 'text-violet-600 dark:text-violet-400', bg: 'bg-violet-500/10' },
   { id: 'perplexity', label: 'Perplexity', sublabel: 'Perplexity Pro', letter: 'P', color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-500/10' },
   { id: 'gemini', label: 'Gemini', sublabel: 'Gemini 1.5 Pro, Flash', letter: 'G', color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-500/10' },
+  { id: 'grok', label: 'Grok', sublabel: 'Grok-2', letter: 'X', color: 'text-sky-600 dark:text-sky-400', bg: 'bg-sky-500/10' },
 ];
-
-const initialKeywords = ['CRM PME 2026', 'marketing automation', 'gestion projet agile', 'emailing e-commerce'];
 
 export default function CreateProject() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [step, setStep] = useState(1);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Form state
+  const [name, setName] = useState('');
+  const [targetUrl, setTargetUrl] = useState('');
+  const [description, setDescription] = useState('');
   const [selectedLlms, setSelectedLlms] = useState<string[]>(['chatgpt', 'claude', 'perplexity']);
-  const [keywords, setKeywords] = useState<string[]>(initialKeywords);
+  const [keywords, setKeywords] = useState<string[]>([]);
   const [keywordInput, setKeywordInput] = useState('');
 
   const goNext = () => {
@@ -43,6 +51,30 @@ export default function CreateProject() {
 
   const removeKeyword = (kw: string) => {
     setKeywords(keywords.filter((k) => k !== kw));
+  };
+
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    try {
+      const project = (await api.createProject({
+        name,
+        target_url: targetUrl,
+        description: description || undefined,
+        llms: selectedLlms,
+        keywords,
+      })) as { id: string };
+
+      if (keywords.length > 0) {
+        await api.createPrompts(project.id, keywords);
+      }
+
+      navigate(`/project/${project.id}`);
+    } catch (err) {
+      console.error('Failed to create project:', err);
+      alert(`Erreur : ${err instanceof Error ? err.message : 'Échec de la création'}`);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -115,7 +147,8 @@ export default function CreateProject() {
                   type="text"
                   className="input-field flex-1"
                   placeholder="monsite.com"
-                  defaultValue="acmecorp"
+                  value={targetUrl}
+                  onChange={(e) => setTargetUrl(e.target.value)}
                 />
               </div>
             </div>
@@ -127,7 +160,8 @@ export default function CreateProject() {
                 type="text"
                 className="input-field"
                 placeholder="Mon Projet"
-                defaultValue="Acme Corp"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
               />
             </div>
             <div>
@@ -138,11 +172,13 @@ export default function CreateProject() {
                 className="input-field resize-none"
                 rows={3}
                 placeholder={t('create.descPlaceholder')}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
               />
             </div>
           </div>
           <div className="flex justify-end mt-6">
-            <button onClick={goNext} className="btn-primary">
+            <button onClick={goNext} className="btn-primary" disabled={!name || !targetUrl}>
               {t('create.next')}
             </button>
           </div>
@@ -189,7 +225,7 @@ export default function CreateProject() {
             <button onClick={goBack} className="btn-secondary">
               {t('create.back')}
             </button>
-            <button onClick={goNext} className="btn-primary">
+            <button onClick={goNext} className="btn-primary" disabled={selectedLlms.length === 0}>
               {t('create.next')}
             </button>
           </div>
@@ -266,7 +302,7 @@ export default function CreateProject() {
                   {t('create.name')}
                 </p>
                 <p className="font-medium text-slate-900 dark:text-white mt-0.5">
-                  Acme Corp
+                  {name || '—'}
                 </p>
               </div>
               <div>
@@ -274,7 +310,7 @@ export default function CreateProject() {
                   {t('create.url')}
                 </p>
                 <p className="font-medium text-slate-900 dark:text-white mt-0.5 font-mono text-xs">
-                  acmecorp.com
+                  {targetUrl || '—'}
                 </p>
               </div>
               <div>
@@ -285,7 +321,7 @@ export default function CreateProject() {
                   {selectedLlms
                     .map((id) => llms.find((l) => l.id === id)?.label)
                     .filter(Boolean)
-                    .join(', ')}
+                    .join(', ') || '—'}
                 </p>
               </div>
               <div>
@@ -313,11 +349,15 @@ export default function CreateProject() {
             </div>
           </div>
           <div className="flex justify-between mt-6">
-            <button onClick={goBack} className="btn-secondary">
+            <button onClick={goBack} className="btn-secondary" disabled={submitting}>
               {t('create.back')}
             </button>
-            <button className="btn-primary" onClick={() => alert('Projet lancé !')}>
-              {t('create.launch')}
+            <button
+              className="btn-primary"
+              onClick={handleSubmit}
+              disabled={submitting}
+            >
+              {submitting ? 'Création en cours…' : t('create.launch')}
             </button>
           </div>
         </div>

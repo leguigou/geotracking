@@ -1,7 +1,7 @@
 import Badge from './Badge';
 
 interface PromptRow {
-  id: number;
+  id: number | string;
   prompt: string;
   chatgpt: boolean;
   claude: boolean;

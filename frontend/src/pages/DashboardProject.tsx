@@ -52,6 +52,26 @@ export default function DashboardProject() {
   const [showScanHistory, setShowScanHistory] = useState(false);
   const [scanModel, setScanModel] = useState('');
 
+  /* ── Settings (modèles activés) ─────────────────────────── */
+  const [enabledModels, setEnabledModels] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const s = await api.getSettings();
+        const raw = s.models_enabled ?? s.enabled_models ?? '[]';
+        const list = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        setEnabledModels(Array.isArray(list) ? list : null);
+      } catch { /* ignore */ }
+    })();
+  }, []);
+
+  /* Filtrer les LLM_DEFS selon les settings */
+  const activeLlmDefs = useMemo(() => {
+    if (!enabledModels) return LLM_DEFS; // pas de settings → tous
+    return LLM_DEFS.filter((llm) => enabledModels.includes(llm.id));
+  }, [enabledModels]);
+
   /* ── API data ───────────────────────────────────────────── */
   const { data: project, loading: loadingProject } = useProject(id);
   const { data: promptsRaw, loading: loadingPrompts } = usePrompts(id);
@@ -168,7 +188,7 @@ export default function DashboardProject() {
         { label: 'Gemini', data: [0, 0, 0, 0, 1, 0, 0, 0], borderColor: '#f59e0b', borderDash: [4, 3] },
       ];
     }
-    return LLM_DEFS.map((llm) => ({
+    return activeLlmDefs.map((llm) => ({
       label: llm.label,
       data: history.map((h) => Number(h[llm.id] ?? 0)),
       borderColor: llm.chartColor,
@@ -324,7 +344,7 @@ export default function DashboardProject() {
               className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-all duration-200 bg-slate-100 dark:bg-slate-800 text-xs"
               onClick={() => {
                 const firstPrompt = promptRows[0];
-                const firstLlm = LLM_DEFS[0];
+                const firstLlm = activeLlmDefs[0];
                 if (firstPrompt) {
                   setInspectProps({
                     llm: firstLlm.label,
@@ -349,7 +369,7 @@ export default function DashboardProject() {
               disabled={scanning}
             >
               <option value="">Tous les LLMs</option>
-              {LLM_DEFS.map((llm) => (
+              {activeLlmDefs.map((llm) => (
                 <option key={llm.id} value={llm.id}>{llm.label}</option>
               ))}
             </select>
@@ -395,7 +415,7 @@ export default function DashboardProject() {
 
       {/* SOV Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
-        {LLM_DEFS.map((llm) => {
+        {activeLlmDefs.map((llm) => {
           const sov = overall[llm.id] ?? 0;
           return (
             <div key={llm.id} className="rounded-xl p-5 transition-all duration-200 cursor-default bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/50 hover:shadow-md">

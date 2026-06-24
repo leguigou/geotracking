@@ -112,6 +112,27 @@ export interface LatestResultsData {
   [key: string]: unknown
 }
 
+export interface ScanResultData {
+  id: string
+  project_id: string
+  prompt_id: string
+  model: string
+  has_url: boolean
+  has_brand: boolean
+  rank: number | null
+  latency_ms: number | null
+  tokens_used: number | null
+  cost: number | null
+  note: string | null
+  has_changes: boolean
+  scanned_at: string
+}
+
+export interface ScanResultDetail extends ScanResultData {
+  response_text: string
+  prompt_text: string
+}
+
 export interface HistoryEntry {
   scan_date: string
   chatgpt?: number
@@ -189,6 +210,12 @@ export const getResults = (projectId: string | number) =>
 export const getLatestResults = (projectId: string | number) =>
   client.get<LatestResultsData>(`/projects/${projectId}/results/latest`).then((r) => r.data)
 
+export const getResultDetail = (projectId: string | number, resultId: string) =>
+  client.get<ScanResultDetail>(`/projects/${projectId}/results/${resultId}`).then((r) => r.data)
+
+export const updateScanResult = (projectId: string | number, resultId: string, data: { note?: string | null; has_changes?: boolean }) =>
+  client.patch<ScanResultData>(`/projects/${projectId}/results/${resultId}`, data).then((r) => r.data)
+
 // ── Settings ────────────────────────────────────────────────────────
 export const getSettings = () =>
   client.get<Record<string, unknown>>("/settings").then((r) => r.data)
@@ -227,6 +254,8 @@ export const api = {
   cancelScan,
   getResults,
   getLatestResults,
+  getResultDetail,
+  updateScanResult,
   getSettings,
   updateSettings,
   testOpenRouterKey,

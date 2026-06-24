@@ -10,23 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
 from app.database import get_db
-from app.dependencies import get_current_user, get_current_organization
-from app.models.project import Project
+from app.dependencies import get_current_organization
+from app.models.project import Project, Prompt
 from app.models.scan_result import ScanResult
-from app.models.user import User
 from app.services.scan_queue import enqueue_scan
 from app.services.scanner import calculate_sov
-from app.services.audit import log_action
 
 router = APIRouter(prefix="/projects", tags=["scans"])
-
-
-def _resolve_uuid(project_id: str) -> uuid.UUID:
-    """Parse project_id as UUID; raise 422 on failure."""
-    try:
-        return uuid.UUID(project_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail=f"Invalid project ID: '{project_id}'")
 
 
 # ---------------------------------------------------------------------------
@@ -34,9 +24,9 @@ def _resolve_uuid(project_id: str) -> uuid.UUID:
 # ---------------------------------------------------------------------------
 
 class ScanResultResponse(BaseModel):
-    id: uuid.UUID
-    project_id: uuid.UUID
-    prompt_id: uuid.UUID
+    id: str
+    project_id: str
+    prompt_id: str
     model: str
     has_url: bool
     has_brand: bool
@@ -44,11 +34,18 @@ class ScanResultResponse(BaseModel):
     latency_ms: Optional[int] = None
     tokens_used: Optional[int] = None
     cost: Optional[float] = None
+    note: Optional[str] = None
+    has_changes: bool = False
     scanned_at: datetime
-    response_text: str | None = None
 
     class Config:
         from_attributes = True
+
+
+class ScanResultDetailResponse(ScanResultResponse):
+    """Full response including the LLM answer text and prompt text."""
+    response_text: str = ""
+    prompt_text: str = ""
 
 
 class SOVStats(BaseModel):
@@ -66,6 +63,11 @@ class LatestScanResponse(BaseModel):
     sov: SOVStats
 
 
+class UpdateScanNoteRequest(BaseModel):
+    note: Optional[str] = None
+    has_changes: Optional[bool] = None
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -73,20 +75,18 @@ class LatestScanResponse(BaseModel):
 @router.post("/{project_id}/scan", status_code=status.HTTP_202_ACCEPTED)
 async def trigger_scan(
     project_id: str,
-    current_user: User = Depends(get_current_user),
     org_id: str = Depends(get_current_organization),
     db: AsyncSession = Depends(get_db),
-    model: str | None = None,
 ):
     """Manually trigger a scan for all prompts in a project.
 
-    If *model* is provided, only scan with that specific model.
+    Returns immediately with HTTP 202; actual scanning happens
+    asynchronously via the ARQ queue.
     """
-    uid = _resolve_uuid(project_id)
     # Verify the project exists and belongs to this org
     result = await db.execute(
         select(Project).where(
-            Project.id == uid,
+            Project.id == project_id,
             Project.organization_id == org_id,
         )
     )
@@ -94,73 +94,13 @@ async def trigger_scan(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # Si un modèle spécifique est demandé, filtrer
-    extra = {}
-    if model:
-        extra["model"] = model
-
-    summary = await enqueue_scan(project_id, specific_model=model)
-    await log_action(db, current_user.organization_id, current_user.id, "scan.started", "project", project_id, {"enqueued": summary["enqueued"], **extra})
-
+    summary = await enqueue_scan(project_id)
     return {
         "status": "accepted",
         "message": f"Scan enqueued ({summary['enqueued']} jobs)",
         "project_id": project_id,
         "enqueued": summary["enqueued"],
     }
-
-
-@router.post("/{project_id}/cancel-scan", status_code=status.HTTP_200_OK)
-async def cancel_scan(
-    project_id: str,
-    current_user: User = Depends(get_current_user),
-    org_id: str = Depends(get_current_organization),
-    db: AsyncSession = Depends(get_db),
-):
-    """Annule tous les jobs de scan en cours pour un projet."""
-    uid = _resolve_uuid(project_id)
-    result = await db.execute(
-        select(Project).where(
-            Project.id == uid,
-            Project.organization_id == org_id,
-        )
-    )
-    project = result.scalar_one_or_none()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    job_ids = project.active_scan_jobs
-    if not job_ids or len(job_ids) == 0:
-        raise HTTPException(status_code=400, detail="Aucun scan en cours")
-
-    # Supprimer les jobs de Redis
-    from arq import create_pool
-    from arq.connections import RedisSettings
-    from app.config import settings as app_settings
-
-    cancelled = 0
-    try:
-        redis = await create_pool(
-            RedisSettings.from_dsn(app_settings.redis_url)
-        )
-        try:
-            for jid in job_ids:
-                await redis.delete(f"arq:job:{jid}")
-                cancelled += 1
-        finally:
-            redis.close()
-            await redis.wait_closed()
-    except Exception as e:
-        # Même si Redis échoue, on vide quand même les job_ids
-        print(f"[cancel] Redis error: {e}")
-
-    # Vider les job_ids
-    project.active_scan_jobs = None
-    await db.flush()
-
-    await log_action(db, current_user.organization_id, current_user.id, "scan.cancelled", "project", project_id, {"cancelled": cancelled})
-
-    return {"status": "cancelled", "cancelled": cancelled, "project_id": project_id}
 
 
 @router.get("/{project_id}/results", response_model=list[ScanResultResponse])
@@ -172,11 +112,10 @@ async def list_results(
     offset: int = Query(0, ge=0),
 ):
     """Return historical scan results for a project, most recent first."""
-    uid = _resolve_uuid(project_id)
     # Verify project belongs to org
     result = await db.execute(
         select(Project).where(
-            Project.id == uid,
+            Project.id == project_id,
             Project.organization_id == org_id,
         )
     )
@@ -185,7 +124,7 @@ async def list_results(
 
     results = await db.execute(
         select(ScanResult)
-        .where(ScanResult.project_id == uid)
+        .where(ScanResult.project_id == project_id)
         .order_by(desc(ScanResult.scanned_at))
         .offset(offset)
         .limit(limit)
@@ -200,11 +139,10 @@ async def get_latest_results(
     db: AsyncSession = Depends(get_db),
 ):
     """Return the most recent scan batch with SOV statistics."""
-    uid = _resolve_uuid(project_id)
     # Verify project belongs to org
     result = await db.execute(
         select(Project).where(
-            Project.id == uid,
+            Project.id == project_id,
             Project.organization_id == org_id,
         )
     )
@@ -214,7 +152,7 @@ async def get_latest_results(
     # Get the latest scanned_at timestamp
     latest_time_result = await db.execute(
         select(func.max(ScanResult.scanned_at))
-        .where(ScanResult.project_id == uid)
+        .where(ScanResult.project_id == project_id)
     )
     latest_at = latest_time_result.scalar()
     if not latest_at:
@@ -227,7 +165,7 @@ async def get_latest_results(
     results_result = await db.execute(
         select(ScanResult)
         .where(
-            ScanResult.project_id == uid,
+            ScanResult.project_id == project_id,
             ScanResult.scanned_at == latest_at,
         )
         .order_by(ScanResult.model, ScanResult.prompt_id)
@@ -254,3 +192,92 @@ async def get_latest_results(
         results=results,
         sov=sov,
     )
+
+
+@router.get("/{project_id}/results/{result_id}", response_model=ScanResultDetailResponse)
+async def get_result_detail(
+    project_id: str,
+    result_id: str,
+    org_id: str = Depends(get_current_organization),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the full detail of a single scan result, including response text."""
+    # Verify project belongs to org
+    result = await db.execute(
+        select(Project).where(
+            Project.id == project_id,
+            Project.organization_id == org_id,
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Fetch the scan result with joined prompt
+    scan_result = await db.execute(
+        select(ScanResult).where(
+            ScanResult.id == result_id,
+            ScanResult.project_id == project_id,
+        )
+    )
+    sr = scan_result.scalar_one_or_none()
+    if not sr:
+        raise HTTPException(status_code=404, detail="Scan result not found")
+
+    prompt_text = sr.prompt.text if sr.prompt else ""
+
+    return ScanResultDetailResponse(
+        id=str(sr.id),
+        project_id=str(sr.project_id),
+        prompt_id=str(sr.prompt_id),
+        model=sr.model,
+        response_text=sr.response_text,
+        prompt_text=prompt_text,
+        has_url=sr.has_url,
+        has_brand=sr.has_brand,
+        rank=sr.rank,
+        latency_ms=sr.latency_ms,
+        tokens_used=sr.tokens_used,
+        cost=sr.cost,
+        note=sr.note,
+        has_changes=sr.has_changes,
+        scanned_at=sr.scanned_at,
+    )
+
+
+@router.patch("/{project_id}/results/{result_id}", response_model=ScanResultResponse)
+async def update_scan_result(
+    project_id: str,
+    result_id: str,
+    req: UpdateScanNoteRequest,
+    org_id: str = Depends(get_current_organization),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update the note and/or has_changes flag on a scan result."""
+    # Verify project belongs to org
+    result = await db.execute(
+        select(Project).where(
+            Project.id == project_id,
+            Project.organization_id == org_id,
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    scan_result = await db.execute(
+        select(ScanResult).where(
+            ScanResult.id == result_id,
+            ScanResult.project_id == project_id,
+        )
+    )
+    sr = scan_result.scalar_one_or_none()
+    if not sr:
+        raise HTTPException(status_code=404, detail="Scan result not found")
+
+    if req.note is not None:
+        sr.note = req.note
+    if req.has_changes is not None:
+        sr.has_changes = req.has_changes
+
+    await db.flush()
+    await db.refresh(sr)
+    return sr

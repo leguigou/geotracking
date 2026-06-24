@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey, Text, Float
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import func
 from app.database import Base
@@ -23,4 +23,8 @@ class ScanResult(Base):
     latency_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     tokens_used: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     cost: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    has_changes: Mapped[bool] = mapped_column(Boolean, default=False)
     scanned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    prompt = relationship("Prompt", lazy="joined")

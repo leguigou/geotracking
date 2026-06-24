@@ -5,7 +5,7 @@ import TrendChart from '../components/TrendChart';
 import PromptMatrix from '../components/PromptMatrix';
 import InspectModal from '../components/InspectModal';
 import { useProject, usePrompts } from '../hooks/useApi';
-import { api, type ScanResultData, type PromptData } from '../lib/api';
+import { api, type ScanResultData } from '../lib/api';
 import { getLlmInfo, computePerModelSov, buildPromptMatrix, buildTrendSeries, getUniqueModels, type ModelSov, type PromptMatrixRow } from '../lib/dataTransform';
 import ManagePrompts from '../components/ManagePrompts';
 import ScanHistory from '../components/ScanHistory';
@@ -13,7 +13,6 @@ import ScanHistory from '../components/ScanHistory';
 export default function DashboardProject() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
-  const navigate = (url: string) => window.location.href = url;
 
   const [period, setPeriod] = useState('last30d');
   const [selectedTheme, setSelectedTheme] = useState<string | null>(null);
@@ -375,6 +374,7 @@ export default function DashboardProject() {
             </button>
           </div>
         </div>
+      </div>
       </div>
 
       {/* SOV Cards — une carte par modèle actif */}

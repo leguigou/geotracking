@@ -1,7 +1,9 @@
 import axios from "axios"
 
+const API_BASE = import.meta.env.VITE_API_URL ?? "https://geotrack.deloffre.fr/api"
+
 const client = axios.create({
-  baseURL: "https://geotrack.deloffre.fr/api",
+  baseURL: API_BASE,
   headers: { "Content-Type": "application/json" },
   withCredentials: true, // envoie les cookies HTTP-only
 })
@@ -51,7 +53,7 @@ client.interceptors.response.use(
     try {
       // Le refresh_token est envoyé automatiquement via le cookie HTTP-only
       const res = await axios.post(
-        "https://geotrack.deloffre.fr/api/auth/refresh",
+        `${API_BASE}/auth/refresh`,
         {},
         { withCredentials: true },
       )

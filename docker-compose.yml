@@ -1,16 +1,32 @@
 services:
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: "http://localhost:8000/api"
     restart: unless-stopped
+    ports:
+      - "3000:80"
 
   backend:
     build: ./backend
     restart: unless-stopped
+    ports:
+      - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_started
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://geotrack:geotrack_pass@db:5432/geotrack"
+      REDIS_URL: "redis://redis:6379/0"
+      CORS_ORIGINS: "http://localhost:80,http://localhost:5173"
+      JWT_SECRET: "dev-secret-change-me-in-production"
+      ENVIRONMENT: "development"
+      JWT_ACCESS_EXPIRE_MINUTES: "60"
+      JWT_REFRESH_EXPIRE_DAYS: "30"
+      OPENAI_API_KEY: ""
 
   db:
     image: postgres:16-alpine

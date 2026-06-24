@@ -220,7 +220,7 @@ export default function SettingsPage() {
               </label>
               <div className="flex gap-2 items-start">
                 <input
-                  type="password"
+                  type="text"
                   className="input-field font-mono flex-1"
                   placeholder="sk-or-..."
                   value={apiKey}

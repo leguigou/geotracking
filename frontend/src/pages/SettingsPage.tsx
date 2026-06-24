@@ -27,6 +27,23 @@ export default function SettingsPage() {
   const [notifications, setNotifications] = useState(true);
   const [language, setLanguage] = useState('fr');
 
+  // OpenRouter test state
+  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle');
+  const [testMessage, setTestMessage] = useState('');
+
+  const handleTestKey = async () => {
+    setTestStatus('testing');
+    setTestMessage('');
+    try {
+      const result = await api.testOpenRouterKey();
+      setTestStatus(result.status as 'ok' | 'error');
+      setTestMessage(result.message);
+    } catch {
+      setTestStatus('error');
+      setTestMessage('Erreur réseau ou clé non configurée');
+    }
+  };
+
   // Load settings on mount
   useEffect(() => {
     let cancelled = false;
@@ -201,13 +218,40 @@ export default function SettingsPage() {
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                 OpenRouter API Key
               </label>
-              <input
-                type="password"
-                className="input-field font-mono"
-                placeholder="sk-or-..."
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-              />
+              <div className="flex gap-2 items-start">
+                <input
+                  type="password"
+                  className="input-field font-mono flex-1"
+                  placeholder="sk-or-..."
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                />
+                <button
+                  onClick={handleTestKey}
+                  disabled={testStatus === 'testing'}
+                  className={`btn-primary shrink-0 px-4 py-2.5 text-xs ${
+                    testStatus === 'testing' ? 'opacity-50 cursor-wait' : ''
+                  }`}
+                >
+                  {testStatus === 'testing' ? 'Test...' : 'Tester'}
+                </button>
+              </div>
+              {testStatus === 'ok' && (
+                <p className="mt-1.5 text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  {testMessage}
+                </p>
+              )}
+              {testStatus === 'error' && (
+                <p className="mt-1.5 text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                  </svg>
+                  {testMessage}
+                </p>
+              )}
             </div>
           </div>
 

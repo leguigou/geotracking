@@ -3,6 +3,7 @@ import axios from "axios"
 const client = axios.create({
   baseURL: "https://geotrack.deloffre.fr/api",
   headers: { "Content-Type": "application/json" },
+  withCredentials: true, // envoie les cookies HTTP-only
 })
 
 // ── Intercepteur : ajouter le token JWT ──────────────────────────
@@ -14,7 +15,7 @@ client.interceptors.request.use((config) => {
   return config
 })
 
-// ── Intercepteur : 401 → refresh automatique ─────────────────────
+// ── Intercepteur : 401 → refresh automatique via cookie ──────────
 let isRefreshing = false
 let pendingRequests: Array<{
   resolve: (token: string) => void
@@ -28,20 +29,8 @@ client.interceptors.response.use(
 
     // Si ce n'est pas un 401 ou que la requête est déjà un retry, on rejette
     if (error.response?.status !== 401 || originalRequest._retry) {
-      // Si c'est un 401 sur /auth/refresh ou /auth/login, on laisse passer
       if (originalRequest.url?.includes("/auth/")) {
         return Promise.reject(error)
-      }
-      return Promise.reject(error)
-    }
-
-    // Tenter un refresh
-    const refreshToken = localStorage.getItem("refresh_token")
-    if (!refreshToken) {
-      localStorage.removeItem("access_token")
-      localStorage.removeItem("refresh_token")
-      if (!window.location.pathname.startsWith("/login")) {
-        window.location.href = "/login"
       }
       return Promise.reject(error)
     }
@@ -60,13 +49,14 @@ client.interceptors.response.use(
     originalRequest._retry = true
 
     try {
+      // Le refresh_token est envoyé automatiquement via le cookie HTTP-only
       const res = await axios.post(
         "https://geotrack.deloffre.fr/api/auth/refresh",
-        { refresh_token: refreshToken },
+        {},
+        { withCredentials: true },
       )
-      const { access_token, refresh_token: newRefresh } = res.data
+      const { access_token } = res.data
       localStorage.setItem("access_token", access_token)
-      if (newRefresh) localStorage.setItem("refresh_token", newRefresh)
 
       // Rejouer les requêtes en attente
       pendingRequests.forEach((p) => p.resolve(access_token))
@@ -77,7 +67,6 @@ client.interceptors.response.use(
     } catch {
       // Refresh échoué → déconnexion
       localStorage.removeItem("access_token")
-      localStorage.removeItem("refresh_token")
       pendingRequests.forEach((p) => p.reject(error))
       pendingRequests = []
       if (!window.location.pathname.startsWith("/login")) {

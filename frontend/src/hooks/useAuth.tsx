@@ -23,48 +23,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // Vérifier le token au mount — tenter un refresh si besoin
+  // Vérifier le token au mount — tenter un refresh via cookie
   useEffect(() => {
     const token = localStorage.getItem("access_token")
-    const refreshToken = localStorage.getItem("refresh_token")
 
-    if (!token && !refreshToken) {
+    if (!token) {
       setLoading(false)
       return
     }
 
     const tryAuth = async () => {
-      // Si on a un token, essayer /me
-      if (token) {
-        try {
-          const data = await apiMe()
-          setUser(data)
-          setLoading(false)
-          return
-        } catch {
-          // Token expiré → on continue pour tenter le refresh
-        }
+      // Essayer /me d'abord
+      try {
+        const data = await apiMe()
+        setUser(data)
+        setLoading(false)
+        return
+      } catch {
+        // Token expiré → tenter un refresh via le cookie
       }
 
-      // Tenter un refresh avec le refresh_token
-      if (refreshToken) {
-        try {
-          const res = await axios.post(
-            "https://geotrack.deloffre.fr/api/auth/refresh",
-            { refresh_token: refreshToken },
-          )
-          const { access_token, refresh_token: newRefresh } = res.data
-          localStorage.setItem("access_token", access_token)
-          if (newRefresh) localStorage.setItem("refresh_token", newRefresh)
-
-          const data = await apiMe()
-          setUser(data)
-        } catch {
-          // Refresh échoué → nettoyage
-          localStorage.removeItem("access_token")
-          localStorage.removeItem("refresh_token")
-        }
-      } else {
+      try {
+        // Le refresh_token est envoyé automatiquement via le cookie HTTP-only
+        const res = await axios.post(
+          "https://geotrack.deloffre.fr/api/auth/refresh",
+          {},
+          { withCredentials: true },
+        )
+        localStorage.setItem("access_token", res.data.access_token)
+        const data = await apiMe()
+        setUser(data)
+      } catch {
+        // Refresh échoué
         localStorage.removeItem("access_token")
       }
 
@@ -77,7 +67,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     const data = await apiLogin(email, password)
     localStorage.setItem("access_token", data.access_token)
-    localStorage.setItem("refresh_token", data.refresh_token)
     const meData = await apiMe()
     setUser(meData)
   }, [])
@@ -86,16 +75,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (email: string, password: string, full_name: string, organization_name: string) => {
       const data = await apiRegister(email, password, full_name, organization_name)
       localStorage.setItem("access_token", data.access_token)
-      localStorage.setItem("refresh_token", data.refresh_token)
       const meData = await apiMe()
       setUser(meData)
     },
     [],
   )
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    try {
+      // Clear le cookie refresh côté serveur
+      await axios.post(
+        "https://geotrack.deloffre.fr/api/auth/logout",
+        {},
+        { withCredentials: true },
+      )
+    } catch {
+      // ignore
+    }
     localStorage.removeItem("access_token")
-    localStorage.removeItem("refresh_token")
     setUser(null)
   }, [])
 

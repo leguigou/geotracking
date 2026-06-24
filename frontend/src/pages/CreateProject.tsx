@@ -11,6 +11,7 @@ const llms = [
   { id: 'perplexity', label: 'Perplexity', sublabel: 'Perplexity Pro', letter: 'P', color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-500/10' },
   { id: 'gemini', label: 'Gemini', sublabel: 'Gemini 1.5 Pro, Flash', letter: 'G', color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-500/10' },
   { id: 'grok', label: 'Grok', sublabel: 'Grok-2', letter: 'X', color: 'text-sky-600 dark:text-sky-400', bg: 'bg-sky-500/10' },
+  { id: 'deepseek', label: 'DeepSeek', sublabel: 'DeepSeek V3, R1', letter: 'D', color: 'text-orange-600 dark:text-orange-400', bg: 'bg-orange-500/10' },
 ];
 
 export default function CreateProject() {

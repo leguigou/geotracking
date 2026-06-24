@@ -11,6 +11,7 @@ const modelsList = [
   { id: 'gemini', label: 'Gemini' },
   { id: 'perplexity', label: 'Perplexity' },
   { id: 'grok', label: 'Grok' },
+  { id: 'deepseek', label: 'DeepSeek' },
 ];
 
 export default function SettingsPage() {

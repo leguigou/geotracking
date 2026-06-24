@@ -14,6 +14,7 @@ const LLM_DEFS = [
   { id: 'claude', label: 'Claude', model: 'Claude 3 Opus / Sonnet', letter: 'C', barColor: 'bg-violet-500', iconBg: 'bg-violet-500/10', iconColor: 'text-violet-600 dark:text-violet-400', chartColor: '#8b5cf6' },
   { id: 'perplexity', label: 'Perplexity', model: 'Perplexity Pro', letter: 'P', barColor: 'bg-amber-500', iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-600 dark:text-emerald-400', chartColor: '#10b981' },
   { id: 'gemini', label: 'Gemini', model: 'Gemini 1.5 Pro', letter: 'G', barColor: 'bg-red-500', iconBg: 'bg-red-500/10', iconColor: 'text-red-600 dark:text-red-400', chartColor: '#f59e0b' },
+  { id: 'deepseek', label: 'DeepSeek', model: 'DeepSeek V3, R1', letter: 'D', barColor: 'bg-orange-500', iconBg: 'bg-orange-500/10', iconColor: 'text-orange-600 dark:text-orange-400', chartColor: '#f97316' },
 ];
 
 interface HistoryEntry {

@@ -51,6 +51,7 @@ export default function ScanHistory({ projectId, onClose }: Props) {
       perplexity: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
       gemini: 'bg-red-500/10 text-red-700 dark:text-red-300',
       grok: 'bg-sky-500/10 text-sky-700 dark:text-sky-300',
+      deepseek: 'bg-orange-500/10 text-orange-700 dark:text-orange-300',
     };
     const key = Object.keys(colors).find((k) => model.toLowerCase().includes(k));
     return colors[key || ''] || 'bg-slate-500/10 text-slate-700 dark:text-slate-300';

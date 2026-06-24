@@ -13,7 +13,39 @@ from app.api.settings import router as settings_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Startup/shutdown lifecycle."""
     await init_db()
+    # Seed default admin user if not exists
+    try:
+        from app.database import async_session_factory
+        from app.models.user import User
+        from app.services.auth import hash_password
+        from sqlalchemy import select
+
+        async with async_session_factory() as session:
+            result = await session.execute(select(User).where(User.email == "admin@geotrack.ai"))
+            if not result.scalar_one_or_none():
+                from app.models.user import Organization
+                import uuid
+
+                org = Organization(name="GEOTrack", slug="geotrack-main")
+                session.add(org)
+                await session.flush()
+
+                admin = User(
+                    organization_id=org.id,
+                    email="admin@geotrack.ai",
+                    password_hash=hash_password("admin123"),
+                    full_name="Admin GEOTrack",
+                    role="admin",
+                )
+                session.add(admin)
+                await session.commit()
+                print("[seed] Admin user created (admin@geotrack.ai / admin123)")
+            else:
+                print("[seed] Admin user already exists")
+    except Exception as e:
+        print(f"[seed] Warning: could not seed admin: {e}")
     yield
 
 

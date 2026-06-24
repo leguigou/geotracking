@@ -9,6 +9,7 @@ interface ScanEntry {
   has_brand: boolean;
   rank?: number | null;
   scanned_at: string;
+  latency_ms?: number | null;
   response_text?: string | null;
   prompt_text?: string;
 }
@@ -36,7 +37,7 @@ export default function ScanHistory({ projectId, onClose }: Props) {
           const db = String(b.scanned_at ?? '');
           return db.localeCompare(da);
         });
-        setResults(list as ScanEntry[]);
+        setResults(list as unknown as ScanEntry[]);
       } catch { /* ignore */ }
       if (!cancelled) setLoading(false);
     })();

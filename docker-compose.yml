@@ -1,33 +1,14 @@
 services:
   frontend:
     build: ./frontend
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.geotrack-front.rule=Host(`geotrack.deloffre.fr`)"
-      - "traefik.http.routers.geotrack-front.entrypoints=websecure"
-      - "traefik.http.routers.geotrack-front.tls=true"
-      - "traefik.http.routers.geotrack-front.tls.certResolver=letsencrypt"
-      - "traefik.http.services.geotrack-front.loadbalancer.server.port=80"
 
   backend:
     build: ./backend
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://geotrack:geotrack_pass@db:5432/geotrack
-      - REDIS_URL=redis://redis:***@env
-      - OPENROUTER_API_KEY=sk-or-...8c6b
-      - ENVIRONMENT=production
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_started
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.geotrack-api.rule=Host(`geotrack.deloffre.fr`) && PathPrefix(`/api`)"
-      - "traefik.http.routers.geotrack-api.entrypoints=websecure"
-      - "traefik.http.routers.geotrack-api.tls=true"
-      - "traefik.http.routers.geotrack-api.tls.certResolver=letsencrypt"
-      - "traefik.http.services.geotrack-api.loadbalancer.server.port=8000"
 
   db:
     image: postgres:16-alpine

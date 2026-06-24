@@ -14,6 +14,7 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://geotrack:geotrack_pass@db:5432/geotrack
       - REDIS_URL=redis://redis:***@env
+      - OPENROUTER_API_KEY=sk-or-...8c6b
       - ENVIRONMENT=production
     depends_on:
       db:

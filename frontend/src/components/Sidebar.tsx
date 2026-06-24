@@ -30,7 +30,10 @@ export default function Sidebar() {
   const [showProjects, setShowProjects] = useState(false)
   const [dark, setDark] = useState(() => {
     const saved = localStorage.getItem("theme")
-    if (saved === "dark") return true
+    if (saved === "dark") {
+      document.documentElement.classList.add("dark")
+      return true
+    }
     if (saved === "light") return false
     document.documentElement.classList.remove("dark")
     return false

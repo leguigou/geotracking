@@ -1,32 +1,58 @@
-# React + TypeScript + Vite
+# GEOTrack AI — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Interface d'administration pour le suivi de visibilité IA.
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- React 20 + TypeScript
+- Vite 8 (build)
+- Tailwind CSS v4
+- react-router-dom, react-i18next
+- Chart.js (via react-chartjs-2)
+- Axios (appels API)
 
-## React Compiler
+## Structure
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```
+src/
+├── components/    # Composants réutilisables
+│   ├── Layout.tsx
+│   ├── Sidebar.tsx
+│   ├── TrendChart.tsx
+│   ├── MetricCard.tsx / StatsCard.tsx
+│   ├── PromptMatrix.tsx / ProjectMatrix.tsx
+│   ├── InspectModal.tsx / Badge.tsx
+├── hooks/         # Hooks personnalisés
+│   ├── useAuth.tsx
+│   └── useApi.ts
+├── lib/           # Services
+│   └── api.ts     # Client Axios + méthodes API
+├── pages/         # Pages
+│   ├── LoginPage.tsx
+│   ├── DashboardGlobal.tsx
+│   ├── DashboardProject.tsx
+│   ├── CreateProject.tsx
+│   └── SettingsPage.tsx
+├── i18n/          # Internationalisation (FR/EN)
+├── main.tsx       # Entry point + routes
+└── index.css      # Styles globaux + custom-variant dark
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## Commandes
+
+```bash
+npm run dev       # Dev server (port 5173)
+npm run build     # Build production (→ dist/)
+npm run preview   # Preview le build
+```
+
+## Thème
+
+Le thème sombre/clair utilise la classe `.dark` sur `<html>`.
+En Tailwind v4, le variant `dark:` est redirigé via `@custom-variant dark (&:where(.dark, .dark *))`.
+Le choix est persisté dans `localStorage` (clé: `theme`), par défaut: clair.
+
+## Internationalisation
+
+Deux langues : français (défaut) et anglais.
+Les traductions sont dans `src/i18n/locales.ts`.

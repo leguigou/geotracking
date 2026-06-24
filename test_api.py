@@ -1,101 +1,120 @@
-import httpx, json, sys
+"""GEOTrack AI — Script de test des API endpoints.
 
-BASE = "http://localhost:8000/api"
-results = []
+Usage:
+    python3 test_api.py                          # Test complet
+    python3 test_api.py --base https://domaine.fr/api  # Sur un déploiement distant
+"""
 
-def test(name, method, path, data=None, token=None):
+import sys, json, os
+
+try:
+    import requests
+except ImportError:
+    print("pip install requests")
+    sys.exit(1)
+
+BASE = os.environ.get("API_BASE", "http://localhost:8000/api")
+
+def req(method, path, data=None, token=None):
     headers = {"Content-Type": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
-    
+    url = f"{BASE}{path}"
     try:
-        if method == "POST":
-            r = httpx.post(f"{BASE}{path}", json=data, headers=headers, timeout=10)
-        elif method == "GET":
-            r = httpx.get(f"{BASE}{path}", headers=headers, timeout=10)
-        else:
-            r = httpx.request(method, f"{BASE}{path}", json=data, headers=headers, timeout=10)
-        
-        status = "✅" if r.status_code < 400 else "❌"
-        print(f"  {status} {method} {path} -> {r.status_code}")
+        r = requests.request(method, url, json=data, headers=headers, timeout=15)
+        ok = "✅" if r.status_code < 400 else "❌"
+        print(f"  {ok} {method} {path} -> {r.status_code}")
         if r.status_code < 400:
             return r.json()
-        else:
-            print(f"     Error: {r.text[:200]}")
-            return None
+        print(f"     {r.text[:300]}")
     except Exception as e:
-        print(f"  ❌ {method} {path} -> ERROR: {e}")
-        return None
+        print(f"  ❌ {method} {path} -> {e}")
+    return None
 
-# Test 1: Health
-print("\n1. Health check")
-test("health", "GET", "/health")
+def main():
+    # ── Health ──
+    print("\n1️⃣  Health check")
+    req("GET", "/health")
 
-# Test 2: Register
-print("\n2. Register")
-reg = test("register", "POST", "/auth/register", {
-    "email": "admin@geotrack.ai",
-    "password": "Test123!",
-    "full_name": "Admin GEOTrack",
-    "organization_name": "GEOTrack AI"
-})
-
-# Test 3: Login
-print("\n3. Login")
-if reg:
-    login = test("login", "POST", "/auth/login", {
+    # ── Login (le compte doit déjà exister) ──
+    print("\n2️⃣  Login")
+    login = req("POST", "/auth/login", {
         "email": "admin@geotrack.ai",
-        "password": "Test123!"
+        "password": os.environ.get("ADMIN_PASSWORD", "admin123"),
     })
-else:
-    login = test("login", "POST", "/auth/login", {
-        "email": "admin@geotrack.ai",
-        "password": "Test123!"
-    })
+    if not login or not login.get("access_token"):
+        print("   ❌ Login failed. Registering new account…")
+        reg = req("POST", "/auth/register", {
+            "email": "admin@geotrack.ai",
+            "password": "admin123",
+            "full_name": "Admin GEOTrack",
+            "organization_name": "GEOTrack AI",
+        })
+        if not reg:
+            print("   ❌ Cannot continue")
+            return
+        login = reg
 
-token = login.get("access_token") if login and isinstance(login, dict) else None
-if not token:
-    print("  ❌ No token, stopping")
-    sys.exit(1)
+    token = login["access_token"]
+    print(f"   Token: {token[:40]}…")
 
-print(f"  Token: {token[:40]}...")
+    # ── Me ──
+    print("\n3️⃣  Get current user")
+    me = req("GET", "/auth/me", token=token)
 
-# Test 4: Me
-print("\n4. Get current user")
-test("me", "GET", "/auth/me", token=token)
-
-# Test 5: Create project
-print("\n5. Create project")
-project = test("create", "POST", "/projects/", {
-    "name": "Test Site Piscines",
-    "target_url": "https://www.monsite-piscine.com",
-    "brand_names": ["Monsite Piscine", "Piscines Pro"],
-    "enabled_models": ["chatgpt", "claude", "gemini", "perplexity"],
-    "frequency": "daily"
-}, token=token)
-
-# Test 6: List projects
-print("\n6. List projects")
-test("list", "GET", "/projects/", token=token)
-
-# Test 7: Get project
-if project and isinstance(project, dict):
-    pid = project.get("id")
-    print(f"\n7. Get project {pid}")
-    test("get", "GET", f"/projects/{pid}", token=token)
-    
-    # Test 8: Add prompts
-    print("\n8. Add prompts")
-    prompts = test("add_prompts", "POST", f"/projects/{pid}/prompts", {
-        "texts": [
-            "Je cherche un constructeur de piscine sur Aubagne, des recommandations ?",
-            "Quelle entreprise de piscine est la meilleure pres de Marseille ?",
-            "Piscine coque ou beton ? Quel professionnel choisir ?"
-        ]
+    # ── Projects ──
+    print("\n4️⃣  Create project")
+    project = req("POST", "/projects", {
+        "name": "Cabesto Piscine",
+        "target_url": "www.cabesto.com",
+        "brand_names": ["Cabesto"],
+        "enabled_models": ["chatgpt", "claude", "perplexity", "gemini"],
     }, token=token)
-    
-    # Test 9: List prompts
-    print("\n9. List prompts")
-    test("list_prompts", "GET", f"/projects/{pid}/prompts", token=token)
 
-print("\n✅ All tests completed!")
+    print("\n5️⃣  List projects")
+    req("GET", "/projects", token=token)
+
+    if project and project.get("id"):
+        pid = project["id"]
+
+        print(f"\n6️⃣  Get project {pid[:8]}…")
+        req("GET", f"/projects/{pid}", token=token)
+
+        print("\n7️⃣  Add prompts (questions)")
+        req("POST", f"/projects/{pid}/prompts", {
+            "texts": [
+                "constructeur piscine Aubagne",
+                "prix piscine coque Marseille",
+                "entretien piscine pas cher",
+            ]
+        }, token=token)
+
+        print("\n8️⃣  List prompts")
+        req("GET", f"/projects/{pid}/prompts", token=token)
+
+        print("\n9️⃣  Trigger scan")
+        req("POST", f"/projects/{pid}/scan", token=token)
+
+        print("\n🔟  Get latest results")
+        req("GET", f"/projects/{pid}/results/latest", token=token)
+
+        print("\n1️⃣1️⃣  Update project")
+        req("PATCH", f"/projects/{pid}", {
+            "name": "Cabesto Piscine (prod)",
+            "frequency": "weekly",
+        }, token=token)
+
+        # Cleanup: delete test project
+        print(f"\n🧹  Delete project {pid[:8]}…")
+        req("DELETE", f"/projects/{pid}", token=token)
+
+    print("\n✅ All tests done!")
+
+if __name__ == "__main__":
+    # Parse --base argument
+    for i, a in enumerate(sys.argv[1:]):
+        if a.startswith("--base="):
+            BASE = a.split("=", 1)[1]
+        elif a == "--base" and i + 1 < len(sys.argv):
+            BASE = sys.argv[i + 2]
+    main()

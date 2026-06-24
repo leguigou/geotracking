@@ -35,6 +35,7 @@ services:
 volumes:
   pgdata:
     name: geotrack_pgdata
+    external: true
 
 networks:
   default:

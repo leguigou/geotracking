@@ -36,6 +36,15 @@ export default function DashboardProject() {
   const [period, setPeriod] = useState('last30d');
   const [selectedTheme, setSelectedTheme] = useState<string | null>(null);
 
+  /* ── Actions projet ────────────────────────────────────────── */
+  const [showActions, setShowActions] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editUrl, setEditUrl] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
   /* ── API data ───────────────────────────────────────────── */
   const { data: project, loading: loadingProject } = useProject(id);
   const { data: promptsRaw, loading: loadingPrompts } = usePrompts(id);
@@ -227,6 +236,46 @@ export default function DashboardProject() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* Action menu */}
+          <div className="relative">
+            <button
+              onClick={() => setShowActions(!showActions)}
+              className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-sm font-medium text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-all"
+              title="Actions"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z" />
+              </svg>
+            </button>
+            {showActions && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowActions(false)} />
+                <div className="absolute right-0 top-full mt-1 z-20 w-44 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 py-1">
+                  <button
+                    onClick={() => {
+                      setEditName(project?.name || '');
+                      setEditUrl(project?.target_url || '');
+                      setEditing(true);
+                      setShowActions(false);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors text-left"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>
+                    Modifier
+                  </button>
+                  <div className="border-t border-slate-200 dark:border-slate-700 my-1" />
+                  <button
+                    onClick={() => { setConfirmDelete(true); setShowActions(false); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-left"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                    Supprimer
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
           {Object.keys(overall).length > 0 && (
             <button
               className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-all duration-200 bg-slate-100 dark:bg-slate-800 text-xs"
@@ -352,6 +401,84 @@ export default function DashboardProject() {
           <PromptMatrix prompts={filteredPromptRows} />
         )}
       </div>
+
+      {/* Edit modal */}
+      {editing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg mx-4 p-6 space-y-5">
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Modifier le projet</h3>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Nom du projet</label>
+              <input type="text" className="input-field w-full" value={editName} onChange={(e) => setEditName(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">URL du site</label>
+              <input type="text" className="input-field w-full" value={editUrl} onChange={(e) => setEditUrl(e.target.value)} />
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button onClick={() => setEditing(false)} className="btn-secondary">Annuler</button>
+              <button
+                onClick={async () => {
+                  if (!id) return;
+                  setSavingEdit(true);
+                  try {
+                    await api.updateProject(id, { name: editName, target_url: editUrl });
+                    setEditing(false);
+                    window.location.reload();
+                  } catch (err) {
+                    alert(`Erreur: ${err instanceof Error ? err.message : 'Échec'}`);
+                  } finally {
+                    setSavingEdit(false);
+                  }
+                }}
+                disabled={savingEdit || !editName || !editUrl}
+                className="btn-primary"
+              >
+                {savingEdit ? 'Sauvegarde...' : 'Sauvegarder'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
+                <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-slate-900 dark:text-white">Supprimer le projet</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Cette action est irréversible.</p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button onClick={() => setConfirmDelete(false)} className="btn-secondary" disabled={deleting}>Annuler</button>
+              <button
+                onClick={async () => {
+                  if (!id) return;
+                  setDeleting(true);
+                  try {
+                    await api.deleteProject(id);
+                    window.location.href = '/';
+                  } catch (err) {
+                    alert(`Erreur: ${err instanceof Error ? err.message : 'Échec'}`);
+                    setDeleting(false);
+                  }
+                }}
+                disabled={deleting}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-white bg-red-600 hover:bg-red-500 transition-all"
+              >
+                {deleting ? 'Suppression...' : 'Oui, supprimer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Inspect Modal */}
       {inspectProps && (

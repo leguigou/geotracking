@@ -1,7 +1,6 @@
-"""Project and Prompt models."""
-
 import uuid
 from datetime import datetime
+from typing import Optional
 from sqlalchemy import String, Boolean, DateTime, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
@@ -32,6 +31,7 @@ class Prompt(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
+    theme: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     project = relationship("Project", back_populates="prompts")

@@ -19,13 +19,61 @@ export default function CreateProject() {
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
 
-  // Form state
+// Form state
   const [name, setName] = useState('');
   const [targetUrl, setTargetUrl] = useState('');
   const [description, setDescription] = useState('');
   const [selectedLlms, setSelectedLlms] = useState<string[]>(['chatgpt', 'claude', 'perplexity']);
-  const [keywords, setKeywords] = useState<string[]>([]);
+  const [themeGroups, setThemeGroups] = useState<{ theme: string; keywords: string[] }[]>([
+    { theme: '', keywords: [] },
+  ]);
+  const [activeThemeIdx, setActiveThemeIdx] = useState(0);
   const [keywordInput, setKeywordInput] = useState('');
+
+  const themes = ['Piscine', 'Jardin', 'Équipement', 'Mode', 'Autre'];
+
+  const addThemeGroup = (preset?: string) => {
+    setThemeGroups([...themeGroups, { theme: preset || '', keywords: [] }]);
+    setActiveThemeIdx(themeGroups.length);
+  };
+
+  const removeThemeGroup = (idx: number) => {
+    if (themeGroups.length <= 1) return;
+    const updated = themeGroups.filter((_, i) => i !== idx);
+    setThemeGroups(updated);
+    if (activeThemeIdx >= updated.length) setActiveThemeIdx(updated.length - 1);
+  };
+
+  const updateThemeName = (idx: number, name: string) => {
+    const updated = [...themeGroups];
+    updated[idx] = { ...updated[idx], theme: name };
+    setThemeGroups(updated);
+  };
+
+  const addKeyword = () => {
+    const trimmed = keywordInput.trim();
+    if (!trimmed) return;
+    const updated = [...themeGroups];
+    if (!updated[activeThemeIdx].keywords.includes(trimmed)) {
+      updated[activeThemeIdx] = {
+        ...updated[activeThemeIdx],
+        keywords: [...updated[activeThemeIdx].keywords, trimmed],
+      };
+      setThemeGroups(updated);
+      setKeywordInput('');
+    }
+  };
+
+  const removeKeyword = (themeIdx: number, kw: string) => {
+    const updated = [...themeGroups];
+    updated[themeIdx] = {
+      ...updated[themeIdx],
+      keywords: updated[themeIdx].keywords.filter((k) => k !== kw),
+    };
+    setThemeGroups(updated);
+  };
+
+  const totalKeywords = themeGroups.reduce((sum, g) => sum + g.keywords.length, 0);
 
   const goNext = () => {
     if (step < 4) setStep(step + 1);
@@ -41,18 +89,6 @@ export default function CreateProject() {
     );
   };
 
-  const addKeyword = () => {
-    const trimmed = keywordInput.trim();
-    if (trimmed && !keywords.includes(trimmed)) {
-      setKeywords([...keywords, trimmed]);
-      setKeywordInput('');
-    }
-  };
-
-  const removeKeyword = (kw: string) => {
-    setKeywords(keywords.filter((k) => k !== kw));
-  };
-
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
@@ -61,11 +97,13 @@ export default function CreateProject() {
         target_url: targetUrl,
         description: description || undefined,
         llms: selectedLlms,
-        keywords,
       })) as { id: string };
 
-      if (keywords.length > 0) {
-        await api.createPrompts(project.id, keywords);
+      // Créer les prompts par groupe de thématique
+      for (const group of themeGroups) {
+        if (group.keywords.length > 0) {
+          await api.createPrompts(project.id, group.keywords, group.theme || undefined);
+        }
       }
 
       navigate(`/project/${project.id}`);
@@ -232,7 +270,7 @@ export default function CreateProject() {
         </div>
       )}
 
-      {/* Step 3: Keywords */}
+      {/* Step 3: Keywords grouped by theme */}
       {step === 3 && (
         <div className="step-content">
           <div className="glass-card rounded-xl p-6 space-y-5">
@@ -242,40 +280,109 @@ export default function CreateProject() {
             <p className="text-sm text-slate-500 dark:text-slate-400">
               {t('create.keywordsDesc')}
             </p>
-            <div className="flex flex-wrap gap-2 mb-2">
-              {keywords.map((kw) => (
-                <span
-                  key={kw}
-                  className="badge bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/20"
+
+            {/* Theme tabs */}
+            <div className="flex flex-wrap gap-2">
+              {themeGroups.map((group, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setActiveThemeIdx(idx)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    idx === activeThemeIdx
+                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300 border border-blue-300 dark:border-blue-500/30'
+                      : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-transparent hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
                 >
-                  {kw}
-                  <button
-                    onClick={() => removeKeyword(kw)}
-                    className="ml-1 hover:text-blue-500"
-                  >
-                    &times;
-                  </button>
-                </span>
+                  {group.theme || `Thème ${idx + 1}`}
+                  <span className="ml-0.5 text-[10px] opacity-60">({group.keywords.length})</span>
+                  {themeGroups.length > 1 && (
+                    <svg className="w-3 h-3 ml-0.5 cursor-pointer hover:text-red-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" onClick={(e) => { e.stopPropagation(); removeThemeGroup(idx); }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  )}
+                </button>
               ))}
-            </div>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                className="input-field flex-1"
-                placeholder="Ajouter un mot-clé..."
-                value={keywordInput}
-                onChange={(e) => setKeywordInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && addKeyword()}
-              />
-              <button onClick={addKeyword} className="btn-secondary shrink-0">
-                {t('create.add')}
+              <button
+                onClick={() => addThemeGroup()}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-blue-600 dark:text-blue-400 border border-dashed border-blue-300 dark:border-blue-500/30 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-all"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+                Ajouter un thème
               </button>
             </div>
+
+            {/* Active theme group */}
+            <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                Nom de la thématique
+              </label>
+              <div className="flex gap-2 mb-4">
+                <input
+                  type="text"
+                  className="input-field flex-1"
+                  placeholder="Ex: Piscine, Jardin, Équipement…"
+                  value={themeGroups[activeThemeIdx]?.theme || ''}
+                  onChange={(e) => updateThemeName(activeThemeIdx, e.target.value)}
+                />
+                {/* Preset theme buttons */}
+                <div className="flex gap-1 flex-wrap items-center">
+                  {themes.map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => updateThemeName(activeThemeIdx, t)}
+                      className={`px-2 py-1 rounded-md text-xs font-medium transition-all ${
+                        themeGroups[activeThemeIdx]?.theme === t
+                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300'
+                          : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                Questions / mots-clés
+              </label>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {themeGroups[activeThemeIdx]?.keywords.map((kw) => (
+                  <span
+                    key={kw}
+                    className="badge bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/20"
+                  >
+                    {kw}
+                    <button
+                      onClick={() => removeKeyword(activeThemeIdx, kw)}
+                      className="ml-1 hover:text-blue-500"
+                    >
+                      &times;
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  className="input-field flex-1"
+                  placeholder="Ajouter une question…"
+                  value={keywordInput}
+                  onChange={(e) => setKeywordInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && addKeyword()}
+                />
+                <button onClick={addKeyword} className="btn-secondary shrink-0">
+                  {t('create.add')}
+                </button>
+              </div>
+            </div>
+
             <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-200 dark:border-slate-700">
               <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
               </svg>
-              <span>{t('create.keywordsTip')}</span>
+              <span>{totalKeywords} question{totalKeywords > 1 ? 's' : ''} dans {themeGroups.length} thématique{themeGroups.length > 1 ? 's' : ''}</span>
             </div>
           </div>
           <div className="flex justify-between mt-6">
@@ -283,7 +390,7 @@ export default function CreateProject() {
               {t('create.back')}
             </button>
             <button onClick={goNext} className="btn-primary">
-              {t('create.next')}
+              {totalKeywords > 0 ? t('create.next') : 'Passer'}
             </button>
           </div>
         </div>
@@ -329,7 +436,7 @@ export default function CreateProject() {
                   {t('create.kw')}
                 </p>
                 <p className="font-medium text-slate-900 dark:text-white mt-0.5">
-                  {keywords.length} requêtes
+                  {totalKeywords} requête{totalKeywords > 1 ? 's' : ''} dans {themeGroups.length} thématique{themeGroups.length > 1 ? 's' : ''}
                 </p>
               </div>
             </div>

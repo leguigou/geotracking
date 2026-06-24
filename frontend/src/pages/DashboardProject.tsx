@@ -34,6 +34,7 @@ export default function DashboardProject() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const [period, setPeriod] = useState('last30d');
+  const [selectedTheme, setSelectedTheme] = useState<string | null>(null);
 
   /* ── API data ───────────────────────────────────────────── */
   const { data: project, loading: loadingProject } = useProject(id);
@@ -169,6 +170,32 @@ export default function DashboardProject() {
     }));
   }, [history]);
 
+  /* ── Themes ──────────────────────────────────────────────── */
+  const themes = useMemo(() => {
+    if (!Array.isArray(promptsRaw)) return [];
+    const t = new Set<string>();
+    for (const p of promptsRaw) {
+      const th = String((p as Record<string, unknown>).theme ?? '');
+      if (th) t.add(th);
+    }
+    return Array.from(t).sort();
+  }, [promptsRaw]);
+
+  const filteredPromptRows = useMemo(() => {
+    if (!selectedTheme) return promptRows;
+    // If we have latest.prompts, filter by theme; otherwise filter promptsRaw
+    if (latest?.prompts && Array.isArray(latest.prompts)) {
+      return promptRows.filter((_, i) => {
+        const p = (promptsRaw as Array<Record<string, unknown>>)[i];
+        return String(p?.theme ?? '') === selectedTheme;
+      });
+    }
+    return promptRows.filter((_, i) => {
+      const p = (promptsRaw as Array<Record<string, unknown>>)[i];
+      return String(p?.theme ?? '') === selectedTheme;
+    });
+  }, [selectedTheme, promptRows, latest, promptsRaw]);
+
   /* ── Loading state ──────────────────────────────────────── */
   if (loadingProject && !project) {
     return (
@@ -285,12 +312,44 @@ export default function DashboardProject() {
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /> {t('project.absent')}</span>
           </div>
         </div>
+
+        {/* Theme filter tabs */}
+        {themes.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-4 pb-4 border-b border-slate-200 dark:border-slate-700">
+            <button
+              onClick={() => setSelectedTheme(null)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                !selectedTheme
+                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300 border border-blue-300 dark:border-blue-500/30'
+                  : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-transparent hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              Tous les thèmes
+            </button>
+            {themes.map((th) => (
+              <button
+                key={th}
+                onClick={() => setSelectedTheme(th)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  selectedTheme === th
+                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300 border border-blue-300 dark:border-blue-500/30'
+                    : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-transparent hover:bg-slate-200 dark:hover:bg-slate-700'
+                }`}
+              >
+                {th}
+              </button>
+            ))}
+          </div>
+        )}
+
         {loadingPrompts ? (
           <p className="text-sm text-slate-400 py-4">Chargement des prompts...</p>
-        ) : promptRows.length === 0 ? (
-          <p className="text-sm text-slate-400 py-4">Aucun prompt configuré pour ce projet.</p>
+        ) : filteredPromptRows.length === 0 ? (
+          <p className="text-sm text-slate-400 py-4">
+            {selectedTheme ? `Aucun prompt pour la thématique "${selectedTheme}".` : 'Aucun prompt configuré pour ce projet.'}
+          </p>
         ) : (
-          <PromptMatrix prompts={promptRows} />
+          <PromptMatrix prompts={filteredPromptRows} />
         )}
       </div>
 

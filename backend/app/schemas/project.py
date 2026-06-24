@@ -1,9 +1,9 @@
 """Project and Prompt schemas."""
 
 import uuid
+from typing import Optional
 
 from pydantic import BaseModel
-from typing import Optional
 from datetime import datetime
 
 
@@ -40,12 +40,14 @@ class ProjectResponse(BaseModel):
 
 class PromptCreate(BaseModel):
     texts: list[str]
+    theme: Optional[str] = None
 
 
 class PromptResponse(BaseModel):
     id: uuid.UUID
     project_id: uuid.UUID
     text: str
+    theme: Optional[str] = None
     created_at: datetime
 
     class Config:

@@ -1,9 +1,9 @@
 """Projects CRUD endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
-from typing import List
+from typing import List, Optional
 
 from app.database import get_db
 from app.dependencies import get_current_user, get_current_organization
@@ -104,6 +104,7 @@ async def delete_project(
 @router.get("/{project_id}/prompts", response_model=List[PromptResponse])
 async def list_prompts(
     project_id: str,
+    theme: Optional[str] = None,
     org_id: str = Depends(get_current_organization),
     db: AsyncSession = Depends(get_db),
 ):
@@ -114,9 +115,12 @@ async def list_prompts(
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Project not found")
 
-    result = await db.execute(
-        select(Prompt).where(Prompt.project_id == project_id).order_by(Prompt.created_at)
-    )
+    query = select(Prompt).where(Prompt.project_id == project_id)
+    if theme:
+        query = query.where(Prompt.theme == theme)
+    query = query.order_by(Prompt.theme, Prompt.created_at)
+
+    result = await db.execute(query)
     return result.scalars().all()
 
 
@@ -133,7 +137,7 @@ async def create_prompts(
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Project not found")
 
-    prompts = [Prompt(project_id=project_id, text=text) for text in req.texts]
+    prompts = [Prompt(project_id=project_id, text=text, theme=req.theme) for text in req.texts]
     db.add_all(prompts)
     await db.flush()
     return prompts

@@ -111,8 +111,8 @@ export const deleteProject = (id: string | number) =>
 export const getPrompts = (projectId: string | number) =>
   client.get<PromptData[]>(`/projects/${projectId}/prompts`).then((r) => r.data)
 
-export const createPrompts = (projectId: string | number, texts: string[]) =>
-  client.post<unknown[]>(`/projects/${projectId}/prompts`, { texts }).then((r) => r.data)
+export const createPrompts = (projectId: string | number, texts: string[], theme?: string) =>
+  client.post<unknown[]>(`/projects/${projectId}/prompts`, { texts, theme }).then((r) => r.data)
 
 export const deletePrompt = (projectId: string | number, promptId: string | number) =>
   client.delete<unknown>(`/projects/${projectId}/prompts/${promptId}`).then((r) => r.data)

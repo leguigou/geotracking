@@ -297,10 +297,10 @@ export default function ManagePrompts({ projectId, prompts, onClose, onRefresh }
                         </button>
                       )}
                       <button
-                      onClick={() => handleDeletePrompt(pData.id as string | number)}
-                      className="text-slate-300 hover:text-red-500 dark:text-slate-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all shrink-0 mt-0.5"
-                      title="Supprimer"
-                    >
+                        onClick={() => handleDeletePrompt(pData.id as string | number)}
+                        className="text-slate-300 hover:text-red-500 dark:text-slate-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all shrink-0 mt-0.5"
+                        title="Supprimer"
+                      >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                       </svg>

@@ -48,28 +48,10 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[seed] Warning: could not seed admin: {e}")
 
-    # Start ARQ worker in background
-    worker_task = None
-    try:
-        from app.services.scan_queue import create_worker
-        worker = await create_worker()
-        worker_task = asyncio.create_task(
-            worker.async_run()
-        )
-        print("[worker] ARQ scan worker started")
-    except Exception as e:
-        print(f"[worker] Warning: could not start ARQ worker: {e}")
-
     yield
 
     # Shutdown
-    if worker_task:
-        worker_task.cancel()
-        try:
-            await worker_task
-        except asyncio.CancelledError:
-            pass
-        print("[worker] ARQ scan worker stopped")
+    pass
 
 app = FastAPI(
     title="GEOTrack AI API",

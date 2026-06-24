@@ -174,8 +174,13 @@ export const updatePrompt = (projectId: string | number, promptId: string | numb
   client.patch<unknown>(`/projects/${projectId}/prompts/${promptId}`, data).then((r) => r.data)
 
 // ── Scan ────────────────────────────────────────────────────────────
-export const scanProject = (projectId: string | number) =>
-  client.post<unknown>(`/projects/${projectId}/scan`).then((r) => r.data)
+export const scanProject = (projectId: string | number, model?: string) => {
+  const params = model ? { model } : undefined;
+  return client.post<unknown>(`/projects/${projectId}/scan`, params).then((r) => r.data);
+};
+
+export const cancelScan = (projectId: string | number) =>
+  client.post<{ status: string; cancelled: number }>(`/projects/${projectId}/cancel-scan`).then((r) => r.data);
 
 // ── Results ─────────────────────────────────────────────────────────
 export const getResults = (projectId: string | number) =>
@@ -216,6 +221,7 @@ export const api = {
   deletePrompt,
   updatePrompt,
   scanProject,
+  cancelScan,
   getResults,
   getLatestResults,
   getSettings,

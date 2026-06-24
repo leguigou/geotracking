@@ -9,6 +9,7 @@ from app.api.auth import router as auth_router
 from app.api.projects import router as projects_router
 from app.api.scans import router as scans_router
 from app.api.settings import router as settings_router
+from app.api.audit import router as audit_router
 
 
 @asynccontextmanager
@@ -68,6 +69,7 @@ app.include_router(auth_router, prefix="/api")
 app.include_router(projects_router, prefix="/api")
 app.include_router(scans_router, prefix="/api")
 app.include_router(settings_router, prefix="/api")
+app.include_router(audit_router, prefix="/api")
 
 
 @app.get("/api/health")

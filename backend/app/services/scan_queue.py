@@ -23,7 +23,7 @@ from app.services.scanner import scan_prompt, run_assertions
 # ---------------------------------------------------------------------------
 # Enqueue
 # ---------------------------------------------------------------------------
-async def enqueue_scan(project_id: str) -> dict:
+async def enqueue_scan(project_id: str, specific_model: str | None = None) -> dict:
     """Fetch all prompts for *project_id* and enqueue a scan job per prompt/model pair.
 
     Returns a summary dict with ``enqueued`` count and ``project_id``.
@@ -47,9 +47,11 @@ async def enqueue_scan(project_id: str) -> dict:
             prompts = prompts_result.scalars().all()
 
         enqueued = 0
+        job_ids: list[str] = []
+        models = [specific_model] if specific_model else (project.enabled_models or ["openai/gpt-4o-mini"])
         for prompt in prompts:
-            models = project.enabled_models or ["openai/gpt-4o-mini"]
             for model in models:
+                job_id = f"scan-{prompt.id}-{model}-{uuid.uuid4().hex[:8]}"
                 await redis.enqueue_job(
                     "scan_prompt_job",
                     prompt_id=str(prompt.id),
@@ -58,11 +60,23 @@ async def enqueue_scan(project_id: str) -> dict:
                     target_url=project.target_url,
                     brand_names=project.brand_names or [],
                     project_id=str(project_id),
-                    _job_id=f"scan-{prompt.id}-{model}-{uuid.uuid4().hex[:8]}",
+                    _job_id=job_id,
                 )
+                job_ids.append(job_id)
                 enqueued += 1
 
-        return {"project_id": project_id, "enqueued": enqueued}
+        # Stocker les job_ids dans le projet pour permettre l'annulation
+        if job_ids:
+            async with async_session() as db:
+                result = await db.execute(
+                    select(Project).where(Project.id == project_id)
+                )
+                p = result.scalar_one_or_none()
+                if p:
+                    p.active_scan_jobs = job_ids
+                    await db.commit()
+
+        return {"project_id": project_id, "enqueued": enqueued, "job_ids": job_ids}
 
     finally:
         redis.close()

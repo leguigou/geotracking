@@ -16,6 +16,7 @@ from app.schemas.project import (
     ProjectCreate, ProjectUpdate, ProjectResponse,
     PromptCreate, PromptResponse,
 )
+from app.services.audit import log_action
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -40,6 +41,7 @@ async def list_projects(
 @router.post("", response_model=ProjectResponse, status_code=201)
 async def create_project(
     req: ProjectCreate,
+    current_user: User = Depends(get_current_user),
     org_id: str = Depends(get_current_organization),
     db: AsyncSession = Depends(get_db),
 ):
@@ -54,6 +56,7 @@ async def create_project(
     db.add(project)
     await db.flush()
     await db.refresh(project)
+    await log_action(db, org_id, current_user.id, "project.created", "project", str(project.id), {"name": project.name, "url": project.target_url})
     return project
 
 
@@ -77,6 +80,7 @@ async def get_project(
 async def update_project(
     project_id: str,
     req: ProjectUpdate,
+    current_user: User = Depends(get_current_user),
     org_id: str = Depends(get_current_organization),
     db: AsyncSession = Depends(get_db),
 ):
@@ -94,12 +98,14 @@ async def update_project(
 
     await db.flush()
     await db.refresh(project)
+    await log_action(db, current_user.organization_id, current_user.id, "project.updated", "project", str(project.id), update_data)
     return project
 
 
 @router.delete("/{project_id}", status_code=204)
 async def delete_project(
     project_id: str,
+    current_user: User = Depends(get_current_user),
     org_id: str = Depends(get_current_organization),
     db: AsyncSession = Depends(get_db),
 ):
@@ -110,6 +116,7 @@ async def delete_project(
     project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+    await log_action(db, current_user.organization_id, current_user.id, "project.deleted", "project", str(project.id), {"name": project.name})
     await db.delete(project)
 
 

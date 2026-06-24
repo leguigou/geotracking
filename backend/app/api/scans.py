@@ -10,11 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
 from app.database import get_db
-from app.dependencies import get_current_organization
+from app.dependencies import get_current_user, get_current_organization
 from app.models.project import Project
 from app.models.scan_result import ScanResult
+from app.models.user import User
 from app.services.scan_queue import enqueue_scan
 from app.services.scanner import calculate_sov
+from app.services.audit import log_action
 
 router = APIRouter(prefix="/projects", tags=["scans"])
 
@@ -71,13 +73,14 @@ class LatestScanResponse(BaseModel):
 @router.post("/{project_id}/scan", status_code=status.HTTP_202_ACCEPTED)
 async def trigger_scan(
     project_id: str,
+    current_user: User = Depends(get_current_user),
     org_id: str = Depends(get_current_organization),
     db: AsyncSession = Depends(get_db),
+    model: str | None = None,
 ):
     """Manually trigger a scan for all prompts in a project.
 
-    Returns immediately with HTTP 202; actual scanning happens
-    asynchronously via the ARQ queue.
+    If *model* is provided, only scan with that specific model.
     """
     uid = _resolve_uuid(project_id)
     # Verify the project exists and belongs to this org
@@ -91,13 +94,73 @@ async def trigger_scan(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    summary = await enqueue_scan(project_id)
+    # Si un modèle spécifique est demandé, filtrer
+    extra = {}
+    if model:
+        extra["model"] = model
+
+    summary = await enqueue_scan(project_id, specific_model=model)
+    await log_action(db, current_user.organization_id, current_user.id, "scan.started", "project", project_id, {"enqueued": summary["enqueued"], **extra})
+
     return {
         "status": "accepted",
         "message": f"Scan enqueued ({summary['enqueued']} jobs)",
         "project_id": project_id,
         "enqueued": summary["enqueued"],
     }
+
+
+@router.post("/{project_id}/cancel-scan", status_code=status.HTTP_200_OK)
+async def cancel_scan(
+    project_id: str,
+    current_user: User = Depends(get_current_user),
+    org_id: str = Depends(get_current_organization),
+    db: AsyncSession = Depends(get_db),
+):
+    """Annule tous les jobs de scan en cours pour un projet."""
+    uid = _resolve_uuid(project_id)
+    result = await db.execute(
+        select(Project).where(
+            Project.id == uid,
+            Project.organization_id == org_id,
+        )
+    )
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    job_ids = project.active_scan_jobs
+    if not job_ids or len(job_ids) == 0:
+        raise HTTPException(status_code=400, detail="Aucun scan en cours")
+
+    # Supprimer les jobs de Redis
+    from arq import create_pool
+    from arq.connections import RedisSettings
+    from app.config import settings as app_settings
+
+    cancelled = 0
+    try:
+        redis = await create_pool(
+            RedisSettings.from_dsn(app_settings.redis_url)
+        )
+        try:
+            for jid in job_ids:
+                await redis.delete(f"arq:job:{jid}")
+                cancelled += 1
+        finally:
+            redis.close()
+            await redis.wait_closed()
+    except Exception as e:
+        # Même si Redis échoue, on vide quand même les job_ids
+        print(f"[cancel] Redis error: {e}")
+
+    # Vider les job_ids
+    project.active_scan_jobs = None
+    await db.flush()
+
+    await log_action(db, current_user.organization_id, current_user.id, "scan.cancelled", "project", project_id, {"cancelled": cancelled})
+
+    return {"status": "cancelled", "cancelled": cancelled, "project_id": project_id}
 
 
 @router.get("/{project_id}/results", response_model=list[ScanResultResponse])

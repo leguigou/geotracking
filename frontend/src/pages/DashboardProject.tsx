@@ -49,6 +49,7 @@ export default function DashboardProject() {
   const [showPromptsManager, setShowPromptsManager] = useState(false);
   const [togglingActive, setTogglingActive] = useState(false);
   const [showScanHistory, setShowScanHistory] = useState(false);
+  const [scanModel, setScanModel] = useState('');
 
   /* ── API data ───────────────────────────────────────────── */
   const { data: project, loading: loadingProject } = useProject(id);
@@ -348,20 +349,56 @@ export default function DashboardProject() {
               <span>{t('project.inspect')}</span>
             </button>
           )}
-          <button
-            className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 active:scale-[.97] text-xs ${
-              scanning
-                ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 cursor-not-allowed'
-                : 'bg-gradient-to-r from-blue-600 to-violet-600 text-white hover:from-blue-500 hover:to-violet-500 shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30'
-            }`}
-            onClick={handleScan}
-            disabled={scanning || !id}
-          >
-            <svg className={`w-3.5 h-3.5 ${scanning ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
-            </svg>
-            <span>{scanning ? t('project.scanning') || 'Scan en cours…' : t('project.refresh')}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Sélecteur de modèle pour le scan */}
+            <select
+              className="input-field text-xs py-2 w-auto"
+              value={scanModel}
+              onChange={(e) => setScanModel(e.target.value)}
+              disabled={scanning}
+            >
+              <option value="">Tous les LLMs</option>
+              {LLM_DEFS.map((llm) => (
+                <option key={llm.id} value={llm.id}>{llm.label}</option>
+              ))}
+            </select>
+
+            {/* Bouton Scan / Annuler */}
+            <button
+              className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 active:scale-[.97] text-xs ${
+                scanning
+                  ? 'bg-red-600 text-white hover:bg-red-500 shadow-lg shadow-red-500/20'
+                  : 'bg-gradient-to-r from-blue-600 to-violet-600 text-white hover:from-blue-500 hover:to-violet-500 shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30'
+              }`}
+              onClick={async () => {
+                if (scanning && id) {
+                  // Annuler
+                  try {
+                    await api.cancelScan(id);
+                  } catch { /* ignore */ }
+                  setScanning(false);
+                  return;
+                }
+                if (!id) return;
+                setScanning(true);
+                try {
+                  await api.scanProject(id, scanModel || undefined);
+                } catch {
+                  setScanning(false);
+                }
+              }}
+              disabled={!id}
+            >
+              <svg className={`w-3.5 h-3.5 ${scanning ? '' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                {scanning ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
+                )}
+              </svg>
+              <span>{scanning ? 'Annuler' : t('project.refresh')}</span>
+            </button>
+          </div>
         </div>
       </div>
 

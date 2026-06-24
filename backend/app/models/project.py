@@ -20,6 +20,7 @@ class Project(Base):
     enabled_models: Mapped[list] = mapped_column(JSON, default=list)
     frequency: Mapped[str] = mapped_column(String(20), default="daily")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    active_scan_jobs: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     prompts = relationship("Prompt", back_populates="project", cascade="all, delete-orphan", lazy="selectin")

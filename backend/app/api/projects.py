@@ -17,7 +17,7 @@ from app.schemas.project import (
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
-@router.get("/", response_model=List[ProjectResponse])
+@router.get("", response_model=List[ProjectResponse])
 async def list_projects(
     org_id: str = Depends(get_current_organization),
     db: AsyncSession = Depends(get_db),
@@ -26,7 +26,7 @@ async def list_projects(
     return result.scalars().all()
 
 
-@router.post("/", response_model=ProjectResponse, status_code=201)
+@router.post("", response_model=ProjectResponse, status_code=201)
 async def create_project(
     req: ProjectCreate,
     org_id: str = Depends(get_current_organization),

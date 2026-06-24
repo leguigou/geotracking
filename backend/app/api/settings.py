@@ -17,7 +17,7 @@ class SettingsUpdate(BaseModel):
     settings: Dict[str, str]
 
 
-@router.get("/")
+@router.get("")
 async def get_settings(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -29,7 +29,7 @@ async def get_settings(
     return {s.key: s.value for s in settings_list}
 
 
-@router.put("/")
+@router.put("")
 async def update_settings(
     req: SettingsUpdate,
     current_user: User = Depends(get_current_user),

@@ -24,9 +24,9 @@ router = APIRouter(prefix="/projects", tags=["scans"])
 # ---------------------------------------------------------------------------
 
 class ScanResultResponse(BaseModel):
-    id: str
-    project_id: str
-    prompt_id: str
+    id: uuid.UUID
+    project_id: uuid.UUID
+    prompt_id: uuid.UUID
     model: str
     has_url: bool
     has_brand: bool

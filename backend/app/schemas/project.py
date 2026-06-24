@@ -1,5 +1,7 @@
 """Project and Prompt schemas."""
 
+import uuid
+
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
@@ -23,7 +25,7 @@ class ProjectUpdate(BaseModel):
 
 
 class ProjectResponse(BaseModel):
-    id: str
+    id: uuid.UUID
     name: str
     target_url: str
     brand_names: list[str]
@@ -41,8 +43,8 @@ class PromptCreate(BaseModel):
 
 
 class PromptResponse(BaseModel):
-    id: str
-    project_id: str
+    id: uuid.UUID
+    project_id: uuid.UUID
     text: str
     created_at: datetime
 

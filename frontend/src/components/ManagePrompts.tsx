@@ -268,7 +268,35 @@ export default function ManagePrompts({ projectId, prompts, onClose, onRefresh }
                     <p className="text-sm text-slate-700 dark:text-slate-300 flex-1 break-words">
                       {String(pData.text ?? '')}
                     </p>
-                    <button
+                    <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                      {(pData as Record<string, unknown>).is_active !== false ? (
+                        <button
+                          onClick={async () => {
+                            await api.updatePrompt(projectId, pData.id as string | number, { is_active: false });
+                            onRefresh();
+                          }}
+                          className="text-slate-300 hover:text-amber-500 dark:text-slate-500 dark:hover:text-amber-400 opacity-0 group-hover:opacity-100 transition-all"
+                          title="Mettre en pause"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M14.25 9v6m-4.5 0V9M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={async () => {
+                            await api.updatePrompt(projectId, pData.id as string | number, { is_active: true });
+                            onRefresh();
+                          }}
+                          className="text-slate-300 hover:text-emerald-500 dark:text-slate-500 dark:hover:text-emerald-400 opacity-0 group-hover:opacity-100 transition-all"
+                          title="Réactiver"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z" />
+                          </svg>
+                        </button>
+                      )}
+                      <button
                       onClick={() => handleDeletePrompt(pData.id as string | number)}
                       className="text-slate-300 hover:text-red-500 dark:text-slate-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all shrink-0 mt-0.5"
                       title="Supprimer"

@@ -3,6 +3,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from typing import List, Optional
@@ -156,6 +157,45 @@ async def create_prompts(
     db.add_all(prompts)
     await db.flush()
     return prompts
+
+
+class PromptUpdate(BaseModel):
+    text: Optional[str] = None
+    theme: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+@router.patch("/{project_id}/prompts/{prompt_id}", response_model=PromptResponse)
+async def update_prompt(
+    project_id: str,
+    prompt_id: str,
+    req: PromptUpdate,
+    org_id: str = Depends(get_current_organization),
+    db: AsyncSession = Depends(get_db),
+):
+    uid = _resolve_project_id(project_id)
+    pid = _resolve_project_id(prompt_id)
+    # Vérifier que le projet appartient à l'org
+    result = await db.execute(
+        select(Project).where(Project.id == uid, Project.organization_id == org_id)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    result = await db.execute(
+        select(Prompt).where(Prompt.id == pid, Prompt.project_id == uid)
+    )
+    prompt = result.scalar_one_or_none()
+    if not prompt:
+        raise HTTPException(status_code=404, detail="Prompt not found")
+
+    update_data = req.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(prompt, key, value)
+
+    await db.flush()
+    await db.refresh(prompt)
+    return prompt
 
 
 @router.delete("/{project_id}/prompts/{prompt_id}", status_code=204)

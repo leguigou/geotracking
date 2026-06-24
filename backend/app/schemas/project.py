@@ -48,6 +48,7 @@ class PromptResponse(BaseModel):
     project_id: uuid.UUID
     text: str
     theme: Optional[str] = None
+    is_active: bool = True
     created_at: datetime
 
     class Config:

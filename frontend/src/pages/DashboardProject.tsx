@@ -46,6 +46,7 @@ export default function DashboardProject() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showPromptsManager, setShowPromptsManager] = useState(false);
+  const [togglingActive, setTogglingActive] = useState(false);
 
   /* ── API data ───────────────────────────────────────────── */
   const { data: project, loading: loadingProject } = useProject(id);
@@ -233,7 +234,13 @@ export default function DashboardProject() {
             <p className="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-0.5">
               <span>{t('project.url')}</span> : <span className="font-mono text-xs text-slate-700 dark:text-slate-300">{project?.target_url ?? '—'}</span>
               <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-600" />
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">{t('project.active')}</span>
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${
+                project?.is_active !== false
+                  ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20'
+                  : 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20'
+              }`}>
+                {project?.is_active !== false ? t('project.active') : 'En pause'}
+              </span>
             </p>
           </div>
         </div>
@@ -264,6 +271,32 @@ export default function DashboardProject() {
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>
                     Modifier
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!id) return;
+                      setTogglingActive(true);
+                      setShowActions(false);
+                      try {
+                        await api.updateProject(id, { is_active: project?.is_active === false ? true : false });
+                        window.location.reload();
+                      } catch (err) {
+                        alert(`Erreur: ${err instanceof Error ? err.message : 'Échec'}`);
+                      } finally {
+                        setTogglingActive(false);
+                      }
+                    }}
+                    disabled={togglingActive}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors text-left"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      {project?.is_active !== false ? (
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      ) : (
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M14.25 9v6m-4.5 0V9M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      )}
+                    </svg>
+                    {project?.is_active !== false ? 'Mettre en pause' : 'Réactiver'}
                   </button>
                   <button
                     onClick={() => { setShowPromptsManager(true); setShowActions(false); }}

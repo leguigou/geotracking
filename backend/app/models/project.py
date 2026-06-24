@@ -32,6 +32,7 @@ class Prompt(Base):
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     theme: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, default=None)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     project = relationship("Project", back_populates="prompts")

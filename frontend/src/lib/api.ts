@@ -170,6 +170,9 @@ export const createPrompts = (projectId: string | number, texts: string[], theme
 export const deletePrompt = (projectId: string | number, promptId: string | number) =>
   client.delete<unknown>(`/projects/${projectId}/prompts/${promptId}`).then((r) => r.data)
 
+export const updatePrompt = (projectId: string | number, promptId: string | number, data: Record<string, unknown>) =>
+  client.patch<unknown>(`/projects/${projectId}/prompts/${promptId}`, data).then((r) => r.data)
+
 // ── Scan ────────────────────────────────────────────────────────────
 export const scanProject = (projectId: string | number) =>
   client.post<unknown>(`/projects/${projectId}/scan`).then((r) => r.data)
@@ -211,6 +214,7 @@ export const api = {
   getPrompts,
   createPrompts,
   deletePrompt,
+  updatePrompt,
   scanProject,
   getResults,
   getLatestResults,

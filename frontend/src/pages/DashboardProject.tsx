@@ -380,6 +380,7 @@ export default function DashboardProject() {
                 <span>{t('project.inspect')}</span>
               </button>
             )}
+          </div>
           <div className="flex items-center gap-2">
             {/* Sélecteur de modèle pour le scan */}
             <select

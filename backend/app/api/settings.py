@@ -3,9 +3,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
-from typing import Dict
+from typing import Dict, Optional
 import httpx
 
+from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.user import User
@@ -73,7 +74,7 @@ async def test_openrouter(
 
     Si *api_key* est fournie dans le body, teste cette clé directement.
     Sinon, lit la clé depuis les settings de l'organisation.
-    Utilise un vrai appel de completion (modèle minimal) pour valider l'auth.
+    Utilise le même client OpenAI SDK que le scanner pour une validation réaliste.
     """
     api_key = req.api_key
 
@@ -92,44 +93,44 @@ async def test_openrouter(
         raise HTTPException(status_code=400, detail="Aucune clé API configurée")
 
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": "openai/gpt-4o-mini",
-                    "messages": [{"role": "user", "content": "Say OK"}],
-                    "max_tokens": 5,
-                },
-            )
-            if resp.status_code == 200:
-                return {
-                    "status": "ok",
-                    "message": "Connexion réussie — clé API valide",
-                }
-            elif resp.status_code == 401 or resp.status_code == 403:
-                return {
-                    "status": "error",
-                    "message": "Clé API invalide (refusée par OpenRouter)",
-                }
-            else:
-                body = resp.text[:300]
-                return {
-                    "status": "error",
-                    "message": f"Erreur HTTP {resp.status_code}: {body}",
-                }
-    except httpx.ConnectError:
+        from openai import OpenAI
+
+        client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=api_key,
+            default_headers={
+                "HTTP-Referer": (
+                    settings.cors_origins_list[0]
+                    if settings.cors_origins_list
+                    else "https://geotrack.ai"
+                ),
+                "X-Title": "GEOTrack AI",
+            },
+        )
+        response = client.chat.completions.create(
+            model="openai/gpt-4o-mini",
+            messages=[{"role": "user", "content": "Say OK"}],
+            max_tokens=5,
+        )
+        if response.choices and response.choices[0].message.content is not None:
+            return {
+                "status": "ok",
+                "message": "Connexion réussie — clé API valide",
+            }
         return {
             "status": "error",
-            "message": "Impossible de se connecter à OpenRouter",
+            "message": "Réponse inattendue de l'API",
         }
     except Exception as e:
+        err_str = str(e)
+        if "401" in err_str or "403" in err_str or "Unauthorized" in err_str:
+            return {
+                "status": "error",
+                "message": "Clé API invalide (refusée par OpenRouter)",
+            }
         return {
             "status": "error",
-            "message": f"Erreur inattendue: {str(e)[:200]}",
+            "message": f"Erreur: {err_str[:200]}",
         }
 
 

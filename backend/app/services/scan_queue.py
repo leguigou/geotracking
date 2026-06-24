@@ -123,6 +123,48 @@ async def scan_prompt_job(ctx, *, prompt_id, text, model, target_url, brand_name
 # ---------------------------------------------------------------------------
 # Worker factory
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Cancel
+# ---------------------------------------------------------------------------
+async def cancel_scan_jobs(project_id: str) -> int:
+    """Annule tous les jobs ARQ actifs pour un projet.
+
+    Lit ``active_scan_jobs`` sur le projet, tente d'annuler chaque job
+    via ARQ Job.abort(), puis vide la liste.
+    """
+    import uuid
+    from arq import Job
+
+    redis = await create_pool(
+        RedisSettings.from_dsn(settings.redis_url)
+    )
+
+    cancelled = 0
+    try:
+        async with async_session() as db:
+            result = await db.execute(
+                select(Project).where(Project.id == uuid.UUID(project_id))
+            )
+            project = result.scalar_one_or_none()
+            if not project or not project.active_scan_jobs:
+                return 0
+
+            for job_id in project.active_scan_jobs:
+                try:
+                    job = Job(job_id=job_id, redis=redis)
+                    await job.abort()
+                    cancelled += 1
+                except Exception:
+                    pass
+
+            project.active_scan_jobs = None
+            await db.commit()
+    finally:
+        await redis.close()
+
+    return cancelled
+
+
 async def create_worker() -> Worker:
     """Build and return an ARQ Worker configured for GEOTrack scan jobs."""
     return Worker(

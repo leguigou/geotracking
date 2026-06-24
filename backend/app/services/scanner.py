@@ -91,8 +91,16 @@ async def scan_prompt(
     completion_tokens = usage.completion_tokens if usage else 0
     total_tokens = usage.total_tokens if usage else 0
 
-    # Conservative cost estimate: $2/M input, $8/M output (gpt-4o-mini)
-    cost = (prompt_tokens * 2.0 + completion_tokens * 8.0) / 1_000_000
+    # Essayer de récupérer le coût réel depuis OpenRouter (ajouté dans l'objet usage)
+    cost = 0.0
+    try:
+        if usage and hasattr(usage, "prompt_cost") and usage.prompt_cost is not None:
+            cost = float(usage.prompt_cost) + float(usage.completion_cost)
+        else:
+            # Fallback: estimation conservatrice $2/M input, $8/M output (gpt-4o-mini)
+            cost = (prompt_tokens * 2.0 + completion_tokens * 8.0) / 1_000_000
+    except Exception:
+        cost = (prompt_tokens * 2.0 + completion_tokens * 8.0) / 1_000_000
 
     return {
         "response_text": response_text or "",

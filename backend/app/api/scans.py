@@ -13,7 +13,7 @@ from app.database import get_db
 from app.dependencies import get_current_organization
 from app.models.project import Project, Prompt
 from app.models.scan_result import ScanResult
-from app.services.scan_queue import enqueue_scan
+from app.services.scan_queue import enqueue_scan, cancel_scan_jobs
 from app.services.scanner import calculate_sov
 
 router = APIRouter(prefix="/projects", tags=["scans"])
@@ -77,8 +77,12 @@ async def trigger_scan(
     project_id: str,
     org_id: str = Depends(get_current_organization),
     db: AsyncSession = Depends(get_db),
+    body: Optional[dict] = None,
 ):
     """Manually trigger a scan for all prompts in a project.
+
+    Optionally pass ``{"model": "openai/gpt-4o-mini"}`` in the request body
+    to scan with a specific model only (otherwise uses project's enabled_models).
 
     Returns immediately with HTTP 202; actual scanning happens
     asynchronously via the ARQ queue.
@@ -94,12 +98,42 @@ async def trigger_scan(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    summary = await enqueue_scan(project_id)
+    specific_model = None
+    if body and isinstance(body, dict):
+        specific_model = body.get("model")
+
+    summary = await enqueue_scan(project_id, specific_model=specific_model)
     return {
         "status": "accepted",
         "message": f"Scan enqueued ({summary['enqueued']} jobs)",
         "project_id": project_id,
         "enqueued": summary["enqueued"],
+    }
+
+
+@router.post("/{project_id}/cancel-scan")
+async def cancel_scan(
+    project_id: str,
+    org_id: str = Depends(get_current_organization),
+    db: AsyncSession = Depends(get_db),
+):
+    """Annule tous les scans en cours pour un projet."""
+    # Verify the project belongs to this org
+    result = await db.execute(
+        select(Project).where(
+            Project.id == project_id,
+            Project.organization_id == org_id,
+        )
+    )
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    cancelled = await cancel_scan_jobs(project_id)
+    return {
+        "status": "cancelled" if cancelled > 0 else "none",
+        "cancelled": cancelled,
+        "message": f"{cancelled} job(s) annulé(s)" if cancelled > 0 else "Aucun job actif à annuler",
     }
 
 

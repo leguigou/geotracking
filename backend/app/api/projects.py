@@ -17,6 +17,7 @@ from app.schemas.project import (
     PromptCreate, PromptResponse,
 )
 from app.services.audit import log_action
+from app.llm_registry import resolve_models
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -45,12 +46,19 @@ async def create_project(
     org_id: str = Depends(get_current_organization),
     db: AsyncSession = Depends(get_db),
 ):
+    # Si des slugs frontend sont fournis, les convertir en modèles OpenRouter
+    final_models = req.enabled_models
+    if req.models:
+        final_models = resolve_models(req.models)
+    elif not final_models:
+        final_models = ["openai/gpt-4o-mini"]
+
     project = Project(
         organization_id=org_id,
         name=req.name,
         target_url=req.target_url,
         brand_names=req.brand_names,
-        enabled_models=req.enabled_models,
+        enabled_models=final_models,
         frequency=req.frequency,
     )
     db.add(project)

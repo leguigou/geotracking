@@ -106,10 +106,16 @@ export interface LlmResult {
 }
 
 export interface LatestResultsData {
-  overall?: Record<string, number>
-  prompts?: LlmResult[]
-  scan_date?: string
-  [key: string]: unknown
+  scanned_at: string;
+  results: ScanResultData[];
+  sov: {
+    total_scans: number;
+    url_found: number;
+    brand_found: number;
+    sov_url: number;
+    sov_brand: number;
+    average_rank: number | null;
+  };
 }
 
 export interface ScanResultData {
@@ -196,7 +202,8 @@ export const updatePrompt = (projectId: string | number, promptId: string | numb
 
 // ── Scan ────────────────────────────────────────────────────────────
 export const scanProject = (projectId: string | number, model?: string) => {
-  const params = model ? { model } : undefined;
+  const params: Record<string, unknown> = {};
+  if (model) params.model = model;
   return client.post<unknown>(`/projects/${projectId}/scan`, params).then((r) => r.data);
 };
 

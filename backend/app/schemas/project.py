@@ -12,6 +12,7 @@ class ProjectCreate(BaseModel):
     target_url: str
     brand_names: list[str] = []
     enabled_models: list[str] = []
+    models: list[str] | None = None  # Slugs frontend (ex: ["chatgpt", "claude"])
     frequency: str = "daily"
 
 

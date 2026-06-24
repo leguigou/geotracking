@@ -96,8 +96,8 @@ export default function CreateProject() {
       const project = (await api.createProject({
         name,
         target_url: targetUrl,
-        description: description || undefined,
-        llms: selectedLlms,
+        models: selectedLlms,
+        brand_names: [],
       })) as { id: string };
 
       // Créer les prompts par groupe de thématique

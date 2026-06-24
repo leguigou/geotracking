@@ -1,42 +1,20 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import TrendChart from '../components/TrendChart';
 import PromptMatrix from '../components/PromptMatrix';
 import InspectModal from '../components/InspectModal';
 import { useProject, usePrompts } from '../hooks/useApi';
-import { api } from '../lib/api';
+import { api, type ScanResultData, type PromptData } from '../lib/api';
+import { getLlmInfo, computePerModelSov, buildPromptMatrix, buildTrendSeries, getUniqueModels, type ModelSov, type PromptMatrixRow } from '../lib/dataTransform';
 import ManagePrompts from '../components/ManagePrompts';
 import ScanHistory from '../components/ScanHistory';
-
-const LLM_DEFS = [
-  { id: 'chatgpt', label: 'ChatGPT', model: 'GPT-4o / GPT-4-turbo', letter: 'C', barColor: 'bg-emerald-500', iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-600 dark:text-emerald-400', chartColor: '#3b82f6' },
-  { id: 'claude', label: 'Claude', model: 'Claude 3 Opus / Sonnet', letter: 'C', barColor: 'bg-violet-500', iconBg: 'bg-violet-500/10', iconColor: 'text-violet-600 dark:text-violet-400', chartColor: '#8b5cf6' },
-  { id: 'perplexity', label: 'Perplexity', model: 'Perplexity Pro', letter: 'P', barColor: 'bg-amber-500', iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-600 dark:text-emerald-400', chartColor: '#10b981' },
-  { id: 'gemini', label: 'Gemini', model: 'Gemini 1.5 Pro', letter: 'G', barColor: 'bg-red-500', iconBg: 'bg-red-500/10', iconColor: 'text-red-600 dark:text-red-400', chartColor: '#f59e0b' },
-  { id: 'deepseek', label: 'DeepSeek', model: 'DeepSeek V3, R1', letter: 'D', barColor: 'bg-orange-500', iconBg: 'bg-orange-500/10', iconColor: 'text-orange-600 dark:text-orange-400', chartColor: '#f97316' },
-];
-
-interface HistoryEntry {
-  scan_date: string;
-  chatgpt?: number;
-  claude?: number;
-  perplexity?: number;
-  gemini?: number;
-  [key: string]: unknown;
-}
-
-interface LatestResult {
-  scan_date?: string;
-  overall?: Record<string, number>;
-  prompts?: Array<Record<string, unknown>>;
-  [key: string]: unknown;
-}
 
 export default function DashboardProject() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
+  const navigate = (url: string) => window.location.href = url;
+
   const [period, setPeriod] = useState('last30d');
   const [selectedTheme, setSelectedTheme] = useState<string | null>(null);
 
@@ -53,44 +31,22 @@ export default function DashboardProject() {
   const [showScanHistory, setShowScanHistory] = useState(false);
   const [scanModel, setScanModel] = useState('');
 
-  /* ── Settings (modèles activés) ─────────────────────────── */
-  const [enabledModels, setEnabledModels] = useState<string[] | null>(null);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const s = await api.getSettings();
-        const raw = s.models_enabled ?? s.enabled_models ?? '[]';
-        const list = typeof raw === 'string' ? JSON.parse(raw) : raw;
-        setEnabledModels(Array.isArray(list) ? list : null);
-      } catch { /* ignore */ }
-    })();
-  }, []);
-
-  /* Filtrer les LLM_DEFS selon les settings */
-  const activeLlmDefs = useMemo(() => {
-    if (!enabledModels) return LLM_DEFS; // pas de settings → tous
-    return LLM_DEFS.filter((llm) => enabledModels.includes(llm.id));
-  }, [enabledModels]);
-
   /* ── API data ───────────────────────────────────────────── */
   const { data: project, loading: loadingProject } = useProject(id);
   const { data: promptsRaw, loading: loadingPrompts } = usePrompts(id);
 
-  const [latest, setLatest] = useState<LatestResult | null>(null);
+  const [latestResults, setLatestResults] = useState<ScanResultData[] | null>(null);
   const [loadingLatest, setLoadingLatest] = useState(true);
-  const [history, setHistory] = useState<HistoryEntry[] | null>(null);
+  const [historyResults, setHistoryResults] = useState<ScanResultData[] | null>(null);
 
-  /* Fetch latest results & history directly from api module */
   const fetchLatest = useCallback(async () => {
     if (!id) return;
     try {
-      const res = await api.getLatestResults(id);
-      // getLatestResults returns unknown[] — try to extract first element or use as-is
-      if (Array.isArray(res) && res.length > 0) {
-        setLatest(res[0] as LatestResult);
-      } else if (res && typeof res === 'object' && !Array.isArray(res)) {
-        setLatest(res as unknown as LatestResult);
+      const res = await api.getLatestResults(id) as { results?: ScanResultData[]; scanned_at?: string; sov?: Record<string, unknown> };
+      if (res && Array.isArray(res.results) && res.results.length > 0) {
+        setLatestResults(res.results);
+      } else {
+        setLatestResults(null);
       }
     } catch { /* ignore */ }
     setLoadingLatest(false);
@@ -99,31 +55,26 @@ export default function DashboardProject() {
   const fetchHistory = useCallback(async () => {
     if (!id) return;
     try {
-      const res = await api.getResults(id);
+      const res = await api.getResults(id) as ScanResultData[];
       if (Array.isArray(res)) {
-        setHistory(res as HistoryEntry[]);
+        setHistoryResults(res);
       }
     } catch { /* ignore */ }
   }, [id]);
 
   useEffect(() => { fetchLatest(); }, [fetchLatest]);
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
-  const [scanning, setScanning] = useState(false);
 
-  /* ── API data ───────────────────────────────────────────── */
+  const [scanning, setScanning] = useState(false);
 
   /* Poll every 5s after scan until results arrive */
   useEffect(() => {
     if (!scanning || !id) return;
     const iv = setInterval(async () => {
       try {
-        const res = await api.getLatestResults(id);
-        if ((Array.isArray(res) && res.length > 0) || (res && typeof res === 'object' && !Array.isArray(res))) {
-          if (Array.isArray(res) && res.length > 0) {
-            setLatest(res[0] as LatestResult);
-          } else {
-            setLatest(res as unknown as LatestResult);
-          }
+        const res = await api.getLatestResults(id) as { results?: ScanResultData[] };
+        if (res && Array.isArray(res.results) && res.results.length > 0) {
+          setLatestResults(res.results);
           setScanning(false);
           fetchHistory();
         }
@@ -147,61 +98,25 @@ export default function DashboardProject() {
     resultId: string;
   } | null>(null);
 
-  /* ── SOV cards ──────────────────────────────────────────── */
-  const overall = latest?.overall ?? {};
+  /* ── Computed data ──────────────────────────────────────── */
+  const sovList: ModelSov[] = useMemo(
+    () => latestResults ? computePerModelSov(latestResults) : [],
+    [latestResults],
+  );
 
-  /* ── Prompt matrix rows ─────────────────────────────────── */
-  const promptRows = useMemo(() => {
-    if (!promptsRaw || !Array.isArray(promptsRaw)) return [];
-    if (latest?.prompts && Array.isArray(latest.prompts)) {
-      return latest.prompts.map((pp, i) => ({
-        id: i + 1,
-        prompt: `"${String(pp.prompt_text ?? '')}"`,
-        chatgpt: Boolean(pp.chatgpt ?? false),
-        claude: Boolean(pp.claude ?? false),
-        perplexity: Boolean(pp.perplexity ?? false),
-        gemini: Boolean(pp.gemini ?? false),
-        date: latest.scan_date ? new Date(latest.scan_date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '',
-      }));
-    }
-    return (promptsRaw as Array<Record<string, unknown>>).map((p) => ({
-      id: Number(p.id ?? 0),
-      prompt: `"${String(p.text ?? '')}"`,
-      chatgpt: (overall.chatgpt ?? 0) > 0,
-      claude: (overall.claude ?? 0) > 0,
-      perplexity: (overall.perplexity ?? 0) > 0,
-      gemini: (overall.gemini ?? 0) > 0,
-      date: p.created_at ? new Date(String(p.created_at)).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '',
-    }));
-  }, [promptsRaw, latest, overall]);
+  const promptRows: PromptMatrixRow[] = useMemo(
+    () => {
+      if (!promptsRaw || !Array.isArray(promptsRaw) || !latestResults) return [];
+      return buildPromptMatrix(latestResults, promptsRaw as Array<{ id: string; text: string; theme?: string; created_at?: string }>);
+    },
+    [latestResults, promptsRaw],
+  );
 
-  /* ── Trend chart ────────────────────────────────────────── */
-  const chartLabels = useMemo(() => {
-    if (!history?.length) return ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4', 'Sem 5', 'Sem 6', 'Sem 7', 'Sem 8'];
-    return history.map((h) => {
-      const d = new Date(h.scan_date);
-      return `${d.getDate()}/${d.getMonth() + 1}`;
-    });
-  }, [history]);
+  const activeModels = useMemo(
+    () => latestResults ? getUniqueModels(latestResults) : (project?.enabled_models as string[] ?? []),
+    [latestResults, project],
+  );
 
-  const chartDatasets = useMemo(() => {
-    if (!history?.length) {
-      return [
-        { label: 'ChatGPT', data: [18, 22, 25, 28, 32, 36, 39, 42], borderColor: '#3b82f6' },
-        { label: 'Claude', data: [12, 15, 18, 22, 26, 30, 34, 38], borderColor: '#8b5cf6' },
-        { label: 'Perplexity', data: [5, 7, 8, 10, 11, 12, 14, 15], borderColor: '#10b981' },
-        { label: 'Gemini', data: [0, 0, 0, 0, 1, 0, 0, 0], borderColor: '#f59e0b', borderDash: [4, 3] },
-      ];
-    }
-    return activeLlmDefs.map((llm) => ({
-      label: llm.label,
-      data: history.map((h) => Number(h[llm.id] ?? 0)),
-      borderColor: llm.chartColor,
-      borderDash: history.every((h) => Number(h[llm.id] ?? 0) === 0) ? [4, 3] as number[] : undefined,
-    }));
-  }, [history]);
-
-  /* ── Themes ──────────────────────────────────────────────── */
   const themes = useMemo(() => {
     if (!Array.isArray(promptsRaw)) return [];
     const t = new Set<string>();
@@ -214,18 +129,47 @@ export default function DashboardProject() {
 
   const filteredPromptRows = useMemo(() => {
     if (!selectedTheme) return promptRows;
-    // If we have latest.prompts, filter by theme; otherwise filter promptsRaw
-    if (latest?.prompts && Array.isArray(latest.prompts)) {
-      return promptRows.filter((_, i) => {
-        const p = (promptsRaw as Array<Record<string, unknown>>)[i];
-        return String(p?.theme ?? '') === selectedTheme;
-      });
+    return promptRows.filter((r) => r.theme === selectedTheme);
+  }, [selectedTheme, promptRows]);
+
+  const trendPoints = useMemo(
+    () => historyResults ? buildTrendSeries(historyResults) : [],
+    [historyResults],
+  );
+
+  const chartLabels = useMemo(
+    () => trendPoints.map((p) => {
+      const d = new Date(p.date);
+      return `${d.getDate()}/${d.getMonth() + 1}`;
+    }),
+    [trendPoints],
+  );
+
+  const chartDatasets = useMemo(() => {
+    if (trendPoints.length === 0) {
+      // Données mock
+      return [
+        { label: 'ChatGPT', data: [18, 22, 25, 28, 32, 36, 39, 42], borderColor: '#10b981' },
+        { label: 'Claude', data: [12, 15, 18, 22, 26, 30, 34, 38], borderColor: '#8b5cf6' },
+        { label: 'Perplexity', data: [5, 7, 8, 10, 11, 12, 14, 15], borderColor: '#f97316' },
+        { label: 'Gemini', data: [0, 0, 0, 0, 1, 0, 0, 0], borderColor: '#f59e0b', borderDash: [4, 3] as number[] },
+      ];
     }
-    return promptRows.filter((_, i) => {
-      const p = (promptsRaw as Array<Record<string, unknown>>)[i];
-      return String(p?.theme ?? '') === selectedTheme;
+    // Collecter tous les modèles présents dans les points
+    const allModels = new Set<string>();
+    for (const pt of trendPoints) {
+      for (const model of Object.keys(pt.values)) allModels.add(model);
+    }
+    return Array.from(allModels).map((model) => {
+      const info = getLlmInfo(model);
+      return {
+        label: info.label,
+        data: trendPoints.map((pt) => pt.values[model] ?? 0),
+        borderColor: info.chartColor,
+        borderDash: trendPoints.every((pt) => (pt.values[model] ?? 0) === 0) ? [4, 3] as number[] : undefined,
+      };
     });
-  }, [selectedTheme, promptRows, latest, promptsRaw]);
+  }, [trendPoints]);
 
   /* ── Loading state ──────────────────────────────────────── */
   if (loadingProject && !project) {
@@ -344,23 +288,23 @@ export default function DashboardProject() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <button
-              className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-all duration-200 bg-slate-100 dark:bg-slate-800 text-xs"
-              onClick={() => navigate(`/project/${id}/responses`)}
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" /></svg>
-              <span>Réponses</span>
-            </button>
-            {Object.keys(overall).length > 0 && (
+            {project && (
+              <button
+                className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-all duration-200 bg-slate-100 dark:bg-slate-800 text-xs"
+                onClick={() => window.location.href = `/project/${id}/responses`}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" /></svg>
+                <span>Réponses</span>
+              </button>
+            )}
+          {latestResults && latestResults.length > 0 && (
+            <div className="flex items-center gap-2">
               <button
                 className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-all duration-200 bg-slate-100 dark:bg-slate-800 text-xs"
                 onClick={async () => {
-                  if (!id) return;
+                  if (!id || !latestResults?.length) return;
                   try {
-                    const latest = await api.getLatestResults(id);
-                    if (!latest || !Array.isArray(latest.results) || latest.results.length === 0) return;
-                    const first = latest.results[0];
-                    // Fetch full detail
+                    const first = latestResults[0];
                     const detail = await api.getResultDetail(id, first.id);
                     setInspectProps({
                       open: true,
@@ -379,8 +323,8 @@ export default function DashboardProject() {
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                 <span>{t('project.inspect')}</span>
               </button>
-            )}
-          </div>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             {/* Sélecteur de modèle pour le scan */}
             <select
@@ -390,8 +334,8 @@ export default function DashboardProject() {
               disabled={scanning}
             >
               <option value="">Tous les LLMs</option>
-              {activeLlmDefs.map((llm) => (
-                <option key={llm.id} value={llm.id}>{llm.label}</option>
+              {activeModels.map((model) => (
+                <option key={model} value={model}>{getLlmInfo(model).label}</option>
               ))}
             </select>
 
@@ -404,7 +348,6 @@ export default function DashboardProject() {
               }`}
               onClick={async () => {
                 if (scanning && id) {
-                  // Annuler
                   try {
                     await api.cancelScan(id);
                   } catch { /* ignore */ }
@@ -434,26 +377,51 @@ export default function DashboardProject() {
         </div>
       </div>
 
-      {/* SOV Cards */}
+      {/* SOV Cards — une carte par modèle actif */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
-        {activeLlmDefs.map((llm) => {
-          const sov = overall[llm.id] ?? 0;
+        {sovList.length === 0 ? (
+          // Fallback : afficher les modèles du projet avec SOV à 0
+          activeModels.length > 0 ? activeModels.map((model) => {
+            const info = getLlmInfo(model);
+            return (
+              <div key={model} className="rounded-xl p-5 transition-all duration-200 cursor-default bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/50 hover:shadow-md">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className={`w-8 h-8 rounded-lg ${info.iconBg} ${info.iconColor} flex items-center justify-center text-xs font-bold`}>{info.letter}</div>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">{info.label}</p>
+                    <p className="text-[10px] text-slate-400">{model.split('/').pop()}</p>
+                  </div>
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-3xl font-bold text-slate-900 dark:text-white num">—</span>
+                </div>
+                <div className="mt-3 w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5">
+                  <div className={`${info.barColor} h-1.5 rounded-full`} style={{ width: '0%' }} />
+                </div>
+                <p className="text-xs text-slate-400 mt-2">0 prompt scanné</p>
+              </div>
+            );
+          }) : (
+            <div className="col-span-full text-center py-8 text-sm text-slate-500">Aucun modèle configuré. Lance un scan pour commencer.</div>
+          )
+        ) : sovList.map((s) => {
+          const info = getLlmInfo(s.model);
           return (
-            <div key={llm.id} className="rounded-xl p-5 transition-all duration-200 cursor-default bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/50 hover:shadow-md">
+            <div key={s.model} className="rounded-xl p-5 transition-all duration-200 cursor-default bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/50 hover:shadow-md">
               <div className="flex items-center gap-3 mb-3">
-                <div className={`w-8 h-8 rounded-lg ${llm.iconBg} ${llm.iconColor} flex items-center justify-center text-xs font-bold`}>{llm.letter}</div>
+                <div className={`w-8 h-8 rounded-lg ${info.iconBg} ${info.iconColor} flex items-center justify-center text-xs font-bold`}>{info.letter}</div>
                 <div>
-                  <p className="text-sm font-semibold text-slate-900 dark:text-white">{llm.label}</p>
-                  <p className="text-[10px] text-slate-400">{llm.model}</p>
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white">{info.label}</p>
+                  <p className="text-[10px] text-slate-400">{s.model.split('/').pop()}</p>
                 </div>
               </div>
               <div className="flex items-baseline gap-1">
-                <span className="text-3xl font-bold text-slate-900 dark:text-white num">{loadingLatest ? '…' : `${sov}%`}</span>
+                <span className="text-3xl font-bold text-slate-900 dark:text-white num">{loadingLatest ? '…' : `${s.sovUrl}%`}</span>
               </div>
               <div className="mt-3 w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5">
-                <div className={`${llm.barColor} h-1.5 rounded-full`} style={{ width: `${Math.max(Number(sov), 2)}%` }} />
+                <div className={`${info.barColor} h-1.5 rounded-full transition-all duration-500`} style={{ width: `${Math.max(s.sovUrl, 2)}%` }} />
               </div>
-              <p className="text-xs text-slate-400 mt-2">{Array.isArray(promptsRaw) ? promptsRaw.length : 0} {t('project.promptsTracked')}</p>
+              <p className="text-xs text-slate-400 mt-2">{s.total} prompt{s.total > 1 ? 's' : ''} scanné{s.total > 1 ? 's' : ''}</p>
             </div>
           );
         })}
@@ -515,7 +483,7 @@ export default function DashboardProject() {
           <p className="text-sm text-slate-400 py-4">Chargement des prompts...</p>
         ) : filteredPromptRows.length === 0 ? (
           <p className="text-sm text-slate-400 py-4">
-            {selectedTheme ? `Aucun prompt pour la thématique "${selectedTheme}".` : 'Aucun prompt configuré pour ce projet.'}
+            {selectedTheme ? `Aucun prompt pour la thématique "${selectedTheme}".` : 'Aucun résultat disponible. Lance un scan pour voir la matrice.'}
           </p>
         ) : (
           <PromptMatrix prompts={filteredPromptRows} />

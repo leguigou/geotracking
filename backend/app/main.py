@@ -18,12 +18,12 @@ async def lifespan(app: FastAPI):
     await init_db()
     # Seed default admin user if not exists
     try:
-        from app.database import async_session_factory
+        from app.database import async_session
         from app.models.user import User
         from app.services.auth import hash_password
         from sqlalchemy import select
 
-        async with async_session_factory() as session:
+        async with async_session() as session:
             result = await session.execute(select(User).where(User.email == "admin@geotrack.ai"))
             if not result.scalar_one_or_none():
                 from app.models.user import Organization

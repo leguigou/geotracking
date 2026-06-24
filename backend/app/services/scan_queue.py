@@ -80,7 +80,6 @@ async def enqueue_scan(project_id: str, specific_model: str | None = None) -> di
 
     finally:
         redis.close()
-        await redis.wait_closed()
 
 
 # ---------------------------------------------------------------------------

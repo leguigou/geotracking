@@ -43,6 +43,7 @@ class ScanResultResponse(BaseModel):
     tokens_used: Optional[int] = None
     cost: Optional[float] = None
     scanned_at: datetime
+    response_text: str | None = None
 
     class Config:
         from_attributes = True

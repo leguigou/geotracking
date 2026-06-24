@@ -7,6 +7,7 @@ import InspectModal from '../components/InspectModal';
 import { useProject, usePrompts } from '../hooks/useApi';
 import { api } from '../lib/api';
 import ManagePrompts from '../components/ManagePrompts';
+import ScanHistory from '../components/ScanHistory';
 
 const LLM_DEFS = [
   { id: 'chatgpt', label: 'ChatGPT', model: 'GPT-4o / GPT-4-turbo', letter: 'C', barColor: 'bg-emerald-500', iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-600 dark:text-emerald-400', chartColor: '#3b82f6' },
@@ -47,6 +48,7 @@ export default function DashboardProject() {
   const [deleting, setDeleting] = useState(false);
   const [showPromptsManager, setShowPromptsManager] = useState(false);
   const [togglingActive, setTogglingActive] = useState(false);
+  const [showScanHistory, setShowScanHistory] = useState(false);
 
   /* ── API data ───────────────────────────────────────────── */
   const { data: project, loading: loadingProject } = useProject(id);
@@ -305,6 +307,13 @@ export default function DashboardProject() {
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" /></svg>
                     Gérer les prompts
                   </button>
+                  <button
+                    onClick={() => { setShowScanHistory(true); setShowActions(false); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors text-left"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    Historique des scans
+                  </button>
                   <div className="border-t border-slate-200 dark:border-slate-700 my-1" />
                   <button
                     onClick={() => { setConfirmDelete(true); setShowActions(false); }}
@@ -529,6 +538,10 @@ export default function DashboardProject() {
           onClose={() => setShowPromptsManager(false)}
           onRefresh={() => window.location.reload()}
         />
+      )}
+
+      {showScanHistory && id && (
+        <ScanHistory projectId={id} onClose={() => setShowScanHistory(false)} />
       )}
 
       {/* Inspect Modal */}

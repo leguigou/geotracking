@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, field_serializer
+from pydantic import BaseModel
 from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
@@ -25,9 +25,9 @@ router = APIRouter(prefix="/projects", tags=["scans"])
 # ---------------------------------------------------------------------------
 
 class ScanResultResponse(BaseModel):
-    id: str
-    project_id: str
-    prompt_id: str
+    id: uuid.UUID
+    project_id: uuid.UUID
+    prompt_id: uuid.UUID
     model: str
     has_url: bool
     has_brand: bool
@@ -41,10 +41,7 @@ class ScanResultResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
-    @field_serializer('id', 'project_id', 'prompt_id')
-    def serialize_uuid(self, v: uuid.UUID) -> str:
-        return str(v)
+        json_encoders = {uuid.UUID: str}
 
 
 class ScanResultDetailResponse(ScanResultResponse):
@@ -265,9 +262,9 @@ async def get_result_detail(
     prompt_text = sr.prompt.text if sr.prompt else ""
 
     return ScanResultDetailResponse(
-        id=str(sr.id),
-        project_id=str(sr.project_id),
-        prompt_id=str(sr.prompt_id),
+        id=sr.id,
+        project_id=sr.project_id,
+        prompt_id=sr.prompt_id,
         model=sr.model,
         response_text=sr.response_text,
         prompt_text=prompt_text,

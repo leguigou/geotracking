@@ -1,5 +1,7 @@
 """Auth request/response schemas."""
 
+import uuid
+
 from pydantic import BaseModel, EmailStr
 
 
@@ -26,11 +28,11 @@ class RefreshRequest(BaseModel):
 
 
 class UserResponse(BaseModel):
-    id: str
+    id: uuid.UUID
     email: str
     full_name: str
     role: str
-    organization_id: str
+    organization_id: uuid.UUID
     is_active: bool
 
     class Config:

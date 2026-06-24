@@ -53,9 +53,11 @@ export default function SettingsPage() {
         if (cancelled) return;
         setApiKey((settings.openrouter_api_key as string) || '');
         setModelsEnabled(
-          Array.isArray(settings.models_enabled)
-            ? (settings.models_enabled as string[])
-            : ['chatgpt', 'claude']
+          typeof settings.models_enabled === 'string'
+            ? (JSON.parse(settings.models_enabled as string) as string[])
+            : Array.isArray(settings.models_enabled)
+              ? (settings.models_enabled as string[])
+              : ['chatgpt', 'claude']
         );
         setTemperature(
           settings.temperature != null ? Number(settings.temperature) : 0.7
@@ -91,12 +93,14 @@ export default function SettingsPage() {
     setSaving(true);
     try {
       await api.updateSettings({
-        openrouter_api_key: apiKey || undefined,
-        models_enabled: modelsEnabled,
-        temperature,
-        frequency,
-        notifications_enabled: notifications,
-        language,
+        settings: {
+          openrouter_api_key: apiKey || '',
+          models_enabled: JSON.stringify(modelsEnabled),
+          temperature: String(temperature),
+          frequency,
+          notifications_enabled: String(notifications),
+          language,
+        },
       });
       showToast('Paramètres sauvegardés');
     } catch (err) {

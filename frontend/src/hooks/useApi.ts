@@ -115,7 +115,7 @@ export function useHistory(projectId: string | number | undefined) {
     setLoading(true)
     try {
       const result = await getResults(projectId)
-      setData(result)
+      setData(result as HistoryEntry[])
     } catch {
       setData(null)
     } finally {

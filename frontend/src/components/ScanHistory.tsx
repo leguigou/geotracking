@@ -30,9 +30,8 @@ export default function ScanHistory({ projectId, onClose }: Props) {
       try {
         const raw = await api.getResults(projectId);
         if (cancelled) return;
-        const list = Array.isArray(raw) ? raw : [];
-        // Trier par date décroissante
-        list.sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
+        const list = (Array.isArray(raw) ? raw : []) as Record<string, unknown>[];
+        list.sort((a, b) => {
           const da = String(a.scanned_at ?? '');
           const db = String(b.scanned_at ?? '');
           return db.localeCompare(da);

@@ -152,6 +152,7 @@ export default function ProjectResponses() {
             rank: d.rank,
             latency_ms: d.latency_ms,
             tokens_used: d.tokens_used,
+            cost: d.cost,
             note: d.note,
             has_changes: d.has_changes,
           })),

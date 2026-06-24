@@ -36,6 +36,7 @@ interface LatestResult {
 export default function DashboardProject() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [period, setPeriod] = useState('last30d');
   const [selectedTheme, setSelectedTheme] = useState<string | null>(null);
 

@@ -205,6 +205,9 @@ export const cancelScan = (projectId: string | number) =>
 
 // ── Results ─────────────────────────────────────────────────────────
 export const getResults = (projectId: string | number) =>
+  client.get<unknown[]>(`/projects/${projectId}/results`).then((r) => r.data)
+
+export const getScanResults = (projectId: string | number) =>
   client.get<ScanResultData[]>(`/projects/${projectId}/results`).then((r) => r.data)
 
 export const getLatestResults = (projectId: string | number) =>
@@ -253,6 +256,7 @@ export const api = {
   scanProject,
   cancelScan,
   getResults,
+  getScanResults,
   getLatestResults,
   getResultDetail,
   updateScanResult,

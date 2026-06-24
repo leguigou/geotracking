@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api, type ScanResultDetail } from '../lib/api';
 
@@ -17,11 +16,9 @@ interface BatchResult {
   rank: number | null
   latency_ms: number | null
   tokens_used: number | null
+  cost: number | null
   note: string | null
   has_changes: boolean
-  cost: number | null
-  latency_ms: number | null
-  tokens_used: number | null
 }
 
 interface ScanBatch {
@@ -112,7 +109,7 @@ export default function ProjectResponses() {
     if (!id) return
     setLoading(true)
     try {
-      const results = await api.getResults(id)
+      const results = await api.getScanResults(id)
       // Group by scanned_at (truncated to the minute for batch grouping)
       const groupMap = new Map<string, typeof results>()
       for (const r of results) {

@@ -10,6 +10,7 @@ import DashboardGlobal from "./pages/DashboardGlobal"
 import DashboardProject from "./pages/DashboardProject"
 import CreateProject from "./pages/CreateProject"
 import SettingsPage from "./pages/SettingsPage"
+import NotFound from "./pages/NotFound"
 
 /** Guarde les routes qui nécessitent une authentification */
 function ProtectedRoute() {
@@ -42,7 +43,7 @@ function AppRoutes() {
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
       </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<NotFound />} />
     </Routes>
   )
 }

@@ -19,6 +19,14 @@ from app.schemas.project import (
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
+def _resolve_project_id(project_id: str) -> uuid.UUID:
+    """Try to parse project_id as UUID; raise 422 on failure."""
+    try:
+        return uuid.UUID(project_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"Invalid project ID: '{project_id}' (expected UUID format)")
+
+
 @router.get("", response_model=List[ProjectResponse])
 async def list_projects(
     org_id: str = Depends(get_current_organization),
@@ -50,12 +58,13 @@ async def create_project(
 
 @router.get("/{project_id}", response_model=ProjectResponse)
 async def get_project(
-    project_id: uuid.UUID,
+    project_id: str,
     org_id: str = Depends(get_current_organization),
     db: AsyncSession = Depends(get_db),
 ):
+    uid = _resolve_project_id(project_id)
     result = await db.execute(
-        select(Project).where(Project.id == project_id, Project.organization_id == org_id)
+        select(Project).where(Project.id == uid, Project.organization_id == org_id)
     )
     project = result.scalar_one_or_none()
     if not project:
@@ -65,13 +74,14 @@ async def get_project(
 
 @router.patch("/{project_id}", response_model=ProjectResponse)
 async def update_project(
-    project_id: uuid.UUID,
+    project_id: str,
     req: ProjectUpdate,
     org_id: str = Depends(get_current_organization),
     db: AsyncSession = Depends(get_db),
 ):
+    uid = _resolve_project_id(project_id)
     result = await db.execute(
-        select(Project).where(Project.id == project_id, Project.organization_id == org_id)
+        select(Project).where(Project.id == uid, Project.organization_id == org_id)
     )
     project = result.scalar_one_or_none()
     if not project:
@@ -88,12 +98,13 @@ async def update_project(
 
 @router.delete("/{project_id}", status_code=204)
 async def delete_project(
-    project_id: uuid.UUID,
+    project_id: str,
     org_id: str = Depends(get_current_organization),
     db: AsyncSession = Depends(get_db),
 ):
+    uid = _resolve_project_id(project_id)
     result = await db.execute(
-        select(Project).where(Project.id == project_id, Project.organization_id == org_id)
+        select(Project).where(Project.id == uid, Project.organization_id == org_id)
     )
     project = result.scalar_one_or_none()
     if not project:
@@ -105,19 +116,20 @@ async def delete_project(
 
 @router.get("/{project_id}/prompts", response_model=List[PromptResponse])
 async def list_prompts(
-    project_id: uuid.UUID,
+    project_id: str,
     theme: Optional[str] = None,
     org_id: str = Depends(get_current_organization),
     db: AsyncSession = Depends(get_db),
 ):
+    uid = _resolve_project_id(project_id)
     # Verify project belongs to org
     result = await db.execute(
-        select(Project).where(Project.id == project_id, Project.organization_id == org_id)
+        select(Project).where(Project.id == uid, Project.organization_id == org_id)
     )
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Project not found")
 
-    query = select(Prompt).where(Prompt.project_id == project_id)
+    query = select(Prompt).where(Prompt.project_id == uid)
     if theme:
         query = query.where(Prompt.theme == theme)
     query = query.order_by(Prompt.theme, Prompt.created_at)
@@ -128,18 +140,19 @@ async def list_prompts(
 
 @router.post("/{project_id}/prompts", response_model=List[PromptResponse], status_code=201)
 async def create_prompts(
-    project_id: uuid.UUID,
+    project_id: str,
     req: PromptCreate,
     org_id: str = Depends(get_current_organization),
     db: AsyncSession = Depends(get_db),
 ):
+    uid = _resolve_project_id(project_id)
     result = await db.execute(
-        select(Project).where(Project.id == project_id, Project.organization_id == org_id)
+        select(Project).where(Project.id == uid, Project.organization_id == org_id)
     )
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Project not found")
 
-    prompts = [Prompt(project_id=project_id, text=text, theme=req.theme) for text in req.texts]
+    prompts = [Prompt(project_id=uid, text=text, theme=req.theme) for text in req.texts]
     db.add_all(prompts)
     await db.flush()
     return prompts
@@ -147,13 +160,15 @@ async def create_prompts(
 
 @router.delete("/{project_id}/prompts/{prompt_id}", status_code=204)
 async def delete_prompt(
-    project_id: uuid.UUID,
-    prompt_id: uuid.UUID,
+    project_id: str,
+    prompt_id: str,
     org_id: str = Depends(get_current_organization),
     db: AsyncSession = Depends(get_db),
 ):
+    uid = _resolve_project_id(project_id)
+    pid = _resolve_project_id(prompt_id)
     result = await db.execute(
-        select(Prompt).where(Prompt.id == prompt_id, Prompt.project_id == project_id)
+        select(Prompt).where(Prompt.id == pid, Prompt.project_id == uid)
     )
     prompt = result.scalar_one_or_none()
     if not prompt:

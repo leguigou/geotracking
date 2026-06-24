@@ -182,13 +182,16 @@ export default function CreateProject() {
                   https://
                 </span>
                 <input
-                  type="text"
+                  type="url"
                   className="input-field flex-1"
                   placeholder="monsite.com"
                   value={targetUrl}
                   onChange={(e) => setTargetUrl(e.target.value)}
                 />
               </div>
+              {targetUrl && !/^[a-zA-Z0-9][-a-zA-Z0-9.]*\.[a-zA-Z]{2,}(\/.*)?$/.test(targetUrl) && (
+                <p className="mt-1 text-xs text-red-500">Format d'URL invalide (ex: monsite.com)</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">

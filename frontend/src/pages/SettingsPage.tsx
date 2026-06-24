@@ -315,7 +315,7 @@ export default function SettingsPage() {
               />
               <div className="flex justify-between text-xs text-slate-400 mt-1">
                 <span>Précis (0)</span>
-                <span>Céatif (1)</span>
+                <span>Créatif (1)</span>
               </div>
             </div>
             {/* Fréquence */}

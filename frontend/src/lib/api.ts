@@ -152,7 +152,7 @@ export const getProject = (id: string | number) =>
   client.get<ProjectData>(`/projects/${id}`).then((r) => r.data)
 
 export const updateProject = (id: string | number, data: Record<string, unknown>) =>
-  client.put<unknown>(`/projects/${id}`, data).then((r) => r.data)
+  client.patch<unknown>(`/projects/${id}`, data).then((r) => r.data)
 
 export const deleteProject = (id: string | number) =>
   client.delete<unknown>(`/projects/${id}`).then((r) => r.data)

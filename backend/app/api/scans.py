@@ -19,6 +19,14 @@ from app.services.scanner import calculate_sov
 router = APIRouter(prefix="/projects", tags=["scans"])
 
 
+def _resolve_uuid(project_id: str) -> uuid.UUID:
+    """Parse project_id as UUID; raise 422 on failure."""
+    try:
+        return uuid.UUID(project_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"Invalid project ID: '{project_id}'")
+
+
 # ---------------------------------------------------------------------------
 # Pydantic response schemas
 # ---------------------------------------------------------------------------
@@ -70,10 +78,11 @@ async def trigger_scan(
     Returns immediately with HTTP 202; actual scanning happens
     asynchronously via the ARQ queue.
     """
+    uid = _resolve_uuid(project_id)
     # Verify the project exists and belongs to this org
     result = await db.execute(
         select(Project).where(
-            Project.id == project_id,
+            Project.id == uid,
             Project.organization_id == org_id,
         )
     )
@@ -99,10 +108,11 @@ async def list_results(
     offset: int = Query(0, ge=0),
 ):
     """Return historical scan results for a project, most recent first."""
+    uid = _resolve_uuid(project_id)
     # Verify project belongs to org
     result = await db.execute(
         select(Project).where(
-            Project.id == project_id,
+            Project.id == uid,
             Project.organization_id == org_id,
         )
     )
@@ -111,7 +121,7 @@ async def list_results(
 
     results = await db.execute(
         select(ScanResult)
-        .where(ScanResult.project_id == project_id)
+        .where(ScanResult.project_id == uid)
         .order_by(desc(ScanResult.scanned_at))
         .offset(offset)
         .limit(limit)
@@ -126,10 +136,11 @@ async def get_latest_results(
     db: AsyncSession = Depends(get_db),
 ):
     """Return the most recent scan batch with SOV statistics."""
+    uid = _resolve_uuid(project_id)
     # Verify project belongs to org
     result = await db.execute(
         select(Project).where(
-            Project.id == project_id,
+            Project.id == uid,
             Project.organization_id == org_id,
         )
     )
@@ -139,7 +150,7 @@ async def get_latest_results(
     # Get the latest scanned_at timestamp
     latest_time_result = await db.execute(
         select(func.max(ScanResult.scanned_at))
-        .where(ScanResult.project_id == project_id)
+        .where(ScanResult.project_id == uid)
     )
     latest_at = latest_time_result.scalar()
     if not latest_at:
@@ -152,7 +163,7 @@ async def get_latest_results(
     results_result = await db.execute(
         select(ScanResult)
         .where(
-            ScanResult.project_id == project_id,
+            ScanResult.project_id == uid,
             ScanResult.scanned_at == latest_at,
         )
         .order_by(ScanResult.model, ScanResult.prompt_id)

@@ -86,19 +86,9 @@ export default function DashboardProject() {
 
   useEffect(() => { fetchLatest(); }, [fetchLatest]);
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
-
-  /* ── Scan + polling ─────────────────────────────────────── */
   const [scanning, setScanning] = useState(false);
 
-  const handleScan = useCallback(async () => {
-    if (!id) return;
-    setScanning(true);
-    try {
-      await api.scanProject(id);
-    } catch {
-      // scan will fail if backend isn't running
-    }
-  }, [id]);
+  /* ── API data ───────────────────────────────────────────── */
 
   /* Poll every 5s after scan until results arrive */
   useEffect(() => {

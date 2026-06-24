@@ -131,3 +131,122 @@ async def test_openrouter(
             "status": "error",
             "message": f"Erreur inattendue: {str(e)[:200]}",
         }
+
+
+class RewriteRequest(BaseModel):
+    text: str
+    model: str = "openai/gpt-4o-mini"
+
+
+@router.get("/available-models")
+async def list_models(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Liste les modèles disponibles sur OpenRouter (20 premiers)."""
+    # Récupérer la clé API
+    result = await db.execute(
+        select(Setting).where(
+            Setting.organization_id == current_user.organization_id,
+            Setting.key == "openrouter_api_key",
+        )
+    )
+    setting = result.scalar_one_or_none()
+    api_key = setting.value if setting else ""
+
+    if not api_key:
+        return {"models": [], "has_key": False, "message": "Aucune clé API configurée"}
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                "https://openrouter.ai/api/v1/models",
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+            if resp.status_code != 200:
+                return {"models": [], "has_key": True, "message": "Impossible de récupérer les modèles"}
+
+            data = resp.json()
+            # Filtrer les modèles de chat populaires, prendre les 30 premiers
+            models = [
+                {
+                    "id": m["id"],
+                    "name": m.get("name", m["id"]),
+                    "provider": m.get("vendor", {}).get("name", "?"),
+                    "pricing": m.get("pricing", {}),
+                }
+                for m in data.get("data", [])
+                if "text" in m.get("architecture", {}).get("modality", "text") or True
+            ][:30]
+            return {"models": models, "has_key": True, "message": f"{len(models)} modèles disponibles"}
+    except Exception:
+        return {"models": [], "has_key": True, "message": "Erreur de connexion à OpenRouter"}
+
+
+@router.post("/rewrite-prompt")
+async def rewrite_prompt(
+    req: RewriteRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reformule un texte saisi en un prompt utilisateur bien rédigé,
+    en utilisant le modèle OpenRouter choisi.
+    """
+    # Récupérer la clé API
+    result = await db.execute(
+        select(Setting).where(
+            Setting.organization_id == current_user.organization_id,
+            Setting.key == "openrouter_api_key",
+        )
+    )
+    setting = result.scalar_one_or_none()
+    api_key = setting.value if setting else ""
+
+    if not api_key:
+        raise HTTPException(status_code=400, detail="Aucune clé API OpenRouter configurée")
+
+    system_prompt = (
+        "Tu es un rédacteur expert en prompts pour l'IA. "
+        "Réécris la requête de l'utilisateur en une question claire, naturelle et détaillée, "
+        "comme si un humain la posait à un assistant IA. "
+        "Ne réponds PAS à la question, réécris-la seulement. "
+        "Utilise un ton naturel et conversationnel. "
+        "Retourne UNIQUEMENT le prompt réécrit, sans commentaire ni guillemets."
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": req.model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": req.text},
+                    ],
+                    "max_tokens": 300,
+                    "temperature": 0.7,
+                },
+            )
+            if resp.status_code != 200:
+                body = resp.text[:200]
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Erreur du modèle {req.model}: HTTP {resp.status_code} — {body}",
+                )
+
+            data = resp.json()
+            content = data["choices"][0]["message"]["content"].strip()
+            # Nettoyer les guillemets superflus
+            content = content.strip('"').strip("'").strip()
+            return {"rewritten": content}
+    except httpx.ConnectError:
+        raise HTTPException(status_code=502, detail="Impossible de se connecter à OpenRouter")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur inattendue: {str(e)[:200]}")

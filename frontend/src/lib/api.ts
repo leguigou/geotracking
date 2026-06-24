@@ -188,6 +188,12 @@ export const updateSettings = (settings: Record<string, unknown>) =>
 export const testOpenRouterKey = (apiKey?: string) =>
   client.post<{ status: string; message: string; models?: string[] }>("/settings/test-openrouter", { api_key: apiKey || undefined }).then((r) => r.data)
 
+export const getAvailableModels = () =>
+  client.get<{ models: { id: string; name: string; provider: string; pricing: Record<string, unknown> }[]; has_key: boolean; message: string }>("/settings/available-models").then((r) => r.data)
+
+export const rewritePrompt = (text: string, model: string) =>
+  client.post<{ rewritten: string }>("/settings/rewrite-prompt", { text, model }).then((r) => r.data)
+
 // ── Named export groupé pour compatibilité avec les pages existantes ─
 export const api = {
   login,
@@ -207,6 +213,8 @@ export const api = {
   getSettings,
   updateSettings,
   testOpenRouterKey,
+  getAvailableModels,
+  rewritePrompt,
 }
 
 export default api

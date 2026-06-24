@@ -205,7 +205,7 @@ export const cancelScan = (projectId: string | number) =>
 
 // ── Results ─────────────────────────────────────────────────────────
 export const getResults = (projectId: string | number) =>
-  client.get<HistoryEntry[]>(`/projects/${projectId}/results`).then((r) => r.data)
+  client.get<ScanResultData[]>(`/projects/${projectId}/results`).then((r) => r.data)
 
 export const getLatestResults = (projectId: string | number) =>
   client.get<LatestResultsData>(`/projects/${projectId}/results/latest`).then((r) => r.data)

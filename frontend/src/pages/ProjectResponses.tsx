@@ -19,6 +19,9 @@ interface BatchResult {
   tokens_used: number | null
   note: string | null
   has_changes: boolean
+  cost: number | null
+  latency_ms: number | null
+  tokens_used: number | null
 }
 
 interface ScanBatch {
@@ -76,7 +79,6 @@ function formatTime(iso: string) {
 // ── Component ─────────────────────────────────────────────────────
 
 export default function ProjectResponses() {
-  const { t } = useTranslation()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
 
@@ -114,7 +116,7 @@ export default function ProjectResponses() {
       // Group by scanned_at (truncated to the minute for batch grouping)
       const groupMap = new Map<string, typeof results>()
       for (const r of results) {
-        const key = r.scanned_at?.slice(0, 16) ?? 'unknown'
+        const key = (r.scanned_at ?? '').slice(0, 16) || 'unknown'
         const group = groupMap.get(key) || []
         group.push(r)
         groupMap.set(key, group)
@@ -126,7 +128,7 @@ export default function ProjectResponses() {
         const details = await Promise.all(
           group.map(async (r) => {
             try {
-              return await api.getResultDetail(id, r.id)
+              return await api.getResultDetail(id as string, r.id)
             } catch {
               return null as ScanResultDetail | null
             }
@@ -271,7 +273,7 @@ export default function ProjectResponses() {
             {/* Vertical line */}
             <div className="absolute left-[19px] top-0 bottom-0 w-0.5 bg-slate-200 dark:bg-slate-700" />
 
-            {batches.map((batch, bi) => (
+            {batches.map((batch, _) => (
               <div key={batch.scanned_at} className="relative pl-12 pb-8 last:pb-0">
                 {/* Timeline dot */}
                 <div className={`absolute left-3 top-1.5 w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white z-10 bg-gradient-to-br ${batch.sov > 50 ? 'from-emerald-500 to-emerald-600' : 'from-amber-500 to-amber-600'}`}>

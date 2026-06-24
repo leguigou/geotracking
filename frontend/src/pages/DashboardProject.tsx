@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import TrendChart from '../components/TrendChart';
 import PromptMatrix from '../components/PromptMatrix';
 import InspectModal from '../components/InspectModal';
@@ -361,7 +361,6 @@ export default function DashboardProject() {
                     const first = latest.results[0];
                     // Fetch full detail
                     const detail = await api.getResultDetail(id, first.id);
-                    const firstPrompt = promptRows[0];
                     setInspectProps({
                       open: true,
                       llm: detail.model,

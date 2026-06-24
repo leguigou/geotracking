@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react"
 import { login as apiLogin, register as apiRegister, me as apiMe } from "../lib/api"
+import axios from "axios"
 
 export interface User {
   id: string
@@ -22,20 +23,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // Vérifier le token au mount
+  // Vérifier le token au mount — tenter un refresh si besoin
   useEffect(() => {
     const token = localStorage.getItem("access_token")
-    if (!token) {
+    const refreshToken = localStorage.getItem("refresh_token")
+
+    if (!token && !refreshToken) {
       setLoading(false)
       return
     }
-    apiMe()
-      .then((data) => setUser(data))
-      .catch(() => {
+
+    const tryAuth = async () => {
+      // Si on a un token, essayer /me
+      if (token) {
+        try {
+          const data = await apiMe()
+          setUser(data)
+          setLoading(false)
+          return
+        } catch {
+          // Token expiré → on continue pour tenter le refresh
+        }
+      }
+
+      // Tenter un refresh avec le refresh_token
+      if (refreshToken) {
+        try {
+          const res = await axios.post(
+            "https://geotrack.deloffre.fr/api/auth/refresh",
+            { refresh_token: refreshToken },
+          )
+          const { access_token, refresh_token: newRefresh } = res.data
+          localStorage.setItem("access_token", access_token)
+          if (newRefresh) localStorage.setItem("refresh_token", newRefresh)
+
+          const data = await apiMe()
+          setUser(data)
+        } catch {
+          // Refresh échoué → nettoyage
+          localStorage.removeItem("access_token")
+          localStorage.removeItem("refresh_token")
+        }
+      } else {
         localStorage.removeItem("access_token")
-        localStorage.removeItem("refresh_token")
-      })
-      .finally(() => setLoading(false))
+      }
+
+      setLoading(false)
+    }
+
+    tryAuth()
   }, [])
 
   const login = useCallback(async (email: string, password: string) => {

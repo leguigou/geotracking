@@ -8,8 +8,8 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:%d" % 6379 + "/0"
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
     jwt_secret: str = "super-secret-key-change-in-prod"
-    jwt_access_expire_minutes: int = 15
-    jwt_refresh_expire_days: int = 7
+    jwt_access_expire_minutes: int = 60
+    jwt_refresh_expire_days: int = 30
     environment: str = "development"
     log_level: str = "DEBUG"
 

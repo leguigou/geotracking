@@ -14,18 +14,79 @@ client.interceptors.request.use((config) => {
   return config
 })
 
-// ── Intercepteur : 401 → rediriger vers login ────────────────────
+// ── Intercepteur : 401 → refresh automatique ─────────────────────
+let isRefreshing = false
+let pendingRequests: Array<{
+  resolve: (token: string) => void
+  reject: (err: unknown) => void
+}> = []
+
 client.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
+  async (error) => {
+    const originalRequest = error.config
+
+    // Si ce n'est pas un 401 ou que la requête est déjà un retry, on rejette
+    if (error.response?.status !== 401 || originalRequest._retry) {
+      // Si c'est un 401 sur /auth/refresh ou /auth/login, on laisse passer
+      if (originalRequest.url?.includes("/auth/")) {
+        return Promise.reject(error)
+      }
+      return Promise.reject(error)
+    }
+
+    // Tenter un refresh
+    const refreshToken = localStorage.getItem("refresh_token")
+    if (!refreshToken) {
       localStorage.removeItem("access_token")
       localStorage.removeItem("refresh_token")
       if (!window.location.pathname.startsWith("/login")) {
         window.location.href = "/login"
       }
+      return Promise.reject(error)
     }
-    return Promise.reject(error)
+
+    // Éviter les appels refresh concurrents
+    if (isRefreshing) {
+      return new Promise((resolve, reject) => {
+        pendingRequests.push({ resolve, reject })
+      }).then((token) => {
+        originalRequest.headers.Authorization = `Bearer ${token}`
+        return client(originalRequest)
+      })
+    }
+
+    isRefreshing = true
+    originalRequest._retry = true
+
+    try {
+      const res = await axios.post(
+        "https://geotrack.deloffre.fr/api/auth/refresh",
+        { refresh_token: refreshToken },
+      )
+      const { access_token, refresh_token: newRefresh } = res.data
+      localStorage.setItem("access_token", access_token)
+      if (newRefresh) localStorage.setItem("refresh_token", newRefresh)
+
+      // Rejouer les requêtes en attente
+      pendingRequests.forEach((p) => p.resolve(access_token))
+      pendingRequests = []
+
+      originalRequest.headers.Authorization = `Bearer ${access_token}`
+      return client(originalRequest)
+    } catch {
+      // Refresh échoué → déconnexion
+      localStorage.removeItem("access_token")
+      localStorage.removeItem("refresh_token")
+      pendingRequests.forEach((p) => p.reject(error))
+      pendingRequests = []
+      if (!window.location.pathname.startsWith("/login")) {
+        window.location.href = "/login"
+      }
+      return Promise.reject(error)
+    } finally {
+      isRefreshing = false
+    }
   },
 )
 

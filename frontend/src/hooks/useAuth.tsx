@@ -25,26 +25,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Vérifier le token au mount — tenter un refresh via cookie
   useEffect(() => {
-    const token = localStorage.getItem("access_token")
-
-    if (!token) {
-      setLoading(false)
-      return
-    }
-
     const tryAuth = async () => {
-      // Essayer /me d'abord
-      try {
-        const data = await apiMe()
-        setUser(data)
-        setLoading(false)
-        return
-      } catch {
-        // Token expiré → tenter un refresh via le cookie
+      const token = localStorage.getItem("access_token")
+
+      // Si on a un token, essayer /me d'abord (rapide)
+      if (token) {
+        try {
+          const data = await apiMe()
+          setUser(data)
+          setLoading(false)
+          return
+        } catch {
+          // Token expiré → tenter un refresh via le cookie
+        }
       }
 
+      // Tenter un refresh via le cookie HTTP-only (même sans token local)
       try {
-        // Le refresh_token est envoyé automatiquement via le cookie HTTP-only
         const res = await axios.post(
           "https://geotrack.deloffre.fr/api/auth/refresh",
           {},

@@ -79,7 +79,7 @@ async def enqueue_scan(project_id: str, specific_model: str | None = None) -> di
         return {"project_id": project_id, "enqueued": enqueued, "job_ids": job_ids}
 
     finally:
-        redis.close()
+        await redis.close()
 
 
 # ---------------------------------------------------------------------------
@@ -126,8 +126,8 @@ async def scan_prompt_job(ctx, *, prompt_id, text, model, target_url, brand_name
 async def create_worker() -> Worker:
     """Build and return an ARQ Worker configured for GEOTrack scan jobs."""
     return Worker(
-        settings=RedisSettings.from_dsn(settings.redis_url),
         functions=[scan_prompt_job],
+        redis_settings=RedisSettings.from_dsn(settings.redis_url),
         on_startup=None,
         on_shutdown=None,
         poll_delay=1.0,

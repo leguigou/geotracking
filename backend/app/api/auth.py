@@ -1,5 +1,7 @@
 """Authentication endpoints with HTTP-only cookie for refresh token."""
 
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -94,7 +96,13 @@ async def refresh(request: Request, response: Response, db: AsyncSession = Depen
         _clear_refresh_cookie(response)
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
-    result = await db.execute(select(User).where(User.id == payload["sub"]))
+    try:
+        user_id = uuid.UUID(payload["sub"])
+    except ValueError:
+        _clear_refresh_cookie(response)
+        raise HTTPException(status_code=401, detail="Invalid user ID in token")
+
+    result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         _clear_refresh_cookie(response)

@@ -1,5 +1,7 @@
 """Projects CRUD endpoints."""
 
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
@@ -48,7 +50,7 @@ async def create_project(
 
 @router.get("/{project_id}", response_model=ProjectResponse)
 async def get_project(
-    project_id: str,
+    project_id: uuid.UUID,
     org_id: str = Depends(get_current_organization),
     db: AsyncSession = Depends(get_db),
 ):
@@ -63,7 +65,7 @@ async def get_project(
 
 @router.patch("/{project_id}", response_model=ProjectResponse)
 async def update_project(
-    project_id: str,
+    project_id: uuid.UUID,
     req: ProjectUpdate,
     org_id: str = Depends(get_current_organization),
     db: AsyncSession = Depends(get_db),
@@ -86,7 +88,7 @@ async def update_project(
 
 @router.delete("/{project_id}", status_code=204)
 async def delete_project(
-    project_id: str,
+    project_id: uuid.UUID,
     org_id: str = Depends(get_current_organization),
     db: AsyncSession = Depends(get_db),
 ):
@@ -103,7 +105,7 @@ async def delete_project(
 
 @router.get("/{project_id}/prompts", response_model=List[PromptResponse])
 async def list_prompts(
-    project_id: str,
+    project_id: uuid.UUID,
     theme: Optional[str] = None,
     org_id: str = Depends(get_current_organization),
     db: AsyncSession = Depends(get_db),
@@ -126,7 +128,7 @@ async def list_prompts(
 
 @router.post("/{project_id}/prompts", response_model=List[PromptResponse], status_code=201)
 async def create_prompts(
-    project_id: str,
+    project_id: uuid.UUID,
     req: PromptCreate,
     org_id: str = Depends(get_current_organization),
     db: AsyncSession = Depends(get_db),
@@ -145,8 +147,8 @@ async def create_prompts(
 
 @router.delete("/{project_id}/prompts/{prompt_id}", status_code=204)
 async def delete_prompt(
-    project_id: str,
-    prompt_id: str,
+    project_id: uuid.UUID,
+    prompt_id: uuid.UUID,
     org_id: str = Depends(get_current_organization),
     db: AsyncSession = Depends(get_db),
 ):

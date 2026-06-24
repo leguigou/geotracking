@@ -7,13 +7,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.database import get_db
-from app.schemas.auth import RegisterRequest, LoginRequest, TokenResponse, UserResponse
+from app.schemas.auth import RegisterRequest, LoginRequest, TokenResponse, UserResponse, UpdateProfileRequest
 from app.services.auth import (
     register_organization,
     authenticate_user,
     create_access_token,
     create_refresh_token,
     decode_token,
+    hash_password,
+    verify_password,
 )
 from app.models.user import User
 
@@ -129,4 +131,39 @@ async def logout(response: Response):
 async def get_me(
     current_user=Depends(__import__("app.dependencies", fromlist=["get_current_user"]).get_current_user),
 ):
+    return current_user
+
+
+@router.patch("/me", response_model=UserResponse)
+async def update_me(
+    req: UpdateProfileRequest,
+    current_user: User = Depends(__import__("app.dependencies", fromlist=["get_current_user"]).get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Modifier le profil de l'utilisateur connecté (nom, email, mot de passe)."""
+    import uuid as uuid_mod
+
+    # Vérifier le mot de passe actuel si changement de mot de passe ou email
+    if req.new_password or (req.email and req.email != current_user.email):
+        if not req.current_password:
+            raise HTTPException(status_code=400, detail="Mot de passe actuel requis")
+        if not verify_password(req.current_password, current_user.password_hash):
+            raise HTTPException(status_code=400, detail="Mot de passe actuel incorrect")
+
+    # Vérifier que l'email n'est pas déjà pris
+    if req.email and req.email != current_user.email:
+        result = await db.execute(select(User).where(User.email == req.email))
+        if result.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="Cet email est déjà utilisé")
+
+    # Appliquer les modifications
+    if req.full_name is not None:
+        current_user.full_name = req.full_name
+    if req.email is not None:
+        current_user.email = req.email
+    if req.new_password:
+        current_user.password_hash = hash_password(req.new_password)
+
+    await db.flush()
+    await db.refresh(current_user)
     return current_user

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import api from '../lib/api';
+import { useAuth } from '../hooks/useAuth';
 
-type SettingsTab = 'general' | 'members' | 'credits';
+type SettingsTab = 'general' | 'members' | 'credits' | 'account';
 
 const modelsList = [
   { id: 'chatgpt', label: 'ChatGPT' },
@@ -14,7 +15,8 @@ const modelsList = [
 
 export default function SettingsPage() {
   const { t, i18n } = useTranslation();
-  const [tab, setTab] = useState<SettingsTab>('general');
+  const { user } = useAuth();
+  const [tab, setTab] = useState<SettingsTab>('account');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -30,6 +32,36 @@ export default function SettingsPage() {
   // OpenRouter test state
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle');
   const [testMessage, setTestMessage] = useState('');
+
+  // Profile form state
+  const [fullName, setFullName] = useState('');
+  const [profileEmail, setProfileEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const [profileSuccess, setProfileSuccess] = useState('');
+
+  const handleSaveProfile = async () => {
+    setSavingProfile(true);
+    setProfileError('');
+    setProfileSuccess('');
+    try {
+      const data: Record<string, string> = {};
+      if (fullName) data.full_name = fullName;
+      if (profileEmail) data.email = profileEmail;
+      if (newPassword) data.new_password = newPassword;
+      if (currentPassword) data.current_password = currentPassword;
+      await api.updateProfile(data);
+      setProfileSuccess('Profil mis à jour');
+      setNewPassword('');
+      setCurrentPassword('');
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : 'Erreur');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
 
   const handleTestKey = async () => {
     setTestStatus('testing');
@@ -52,6 +84,8 @@ export default function SettingsPage() {
         const settings = await api.getSettings();
         if (cancelled) return;
         setApiKey((settings.openrouter_api_key as string) || '');
+        setFullName(user?.full_name || '');
+        setProfileEmail(user?.email || '');
         setModelsEnabled(
           typeof settings.models_enabled === 'string'
             ? (JSON.parse(settings.models_enabled as string) as string[])
@@ -157,6 +191,7 @@ export default function SettingsPage() {
   };
 
   const tabs: { key: SettingsTab; label: string }[] = [
+    { key: 'account', label: 'Compte' },
     { key: 'general', label: t('settings.general') },
     { key: 'members', label: t('settings.members') },
     { key: 'credits', label: t('settings.credits') },
@@ -204,6 +239,72 @@ export default function SettingsPage() {
           </button>
         ))}
       </div>
+
+      {/* Account Tab — Profil utilisateur */}
+      {tab === 'account' && (
+        <div className="space-y-6 max-w-2xl">
+          <div className="glass-card rounded-xl p-6 space-y-5">
+            <div>
+              <h2 className="text-base font-semibold text-slate-900 dark:text-white">Mon compte</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Modifiez vos informations personnelles et votre mot de passe.</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Nom complet</label>
+              <input
+                type="text"
+                className="input-field w-full"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Email</label>
+              <input
+                type="email"
+                className="input-field w-full"
+                value={profileEmail}
+                onChange={(e) => setProfileEmail(e.target.value)}
+              />
+            </div>
+            <hr className="border-slate-200 dark:border-slate-700" />
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Nouveau mot de passe</label>
+              <input
+                type="password"
+                className="input-field w-full"
+                placeholder="Laisser vide pour ne pas changer"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Mot de passe actuel</label>
+              <input
+                type="password"
+                className="input-field w-full"
+                placeholder="Requis pour modifier l'email ou le mot de passe"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+              />
+              {profileError && (
+                <p className="mt-1.5 text-xs text-red-500">{profileError}</p>
+              )}
+              {profileSuccess && (
+                <p className="mt-1.5 text-xs text-emerald-500">{profileSuccess}</p>
+              )}
+            </div>
+            <div className="flex justify-end pt-2">
+              <button
+                className="btn-primary"
+                onClick={handleSaveProfile}
+                disabled={savingProfile}
+              >
+                {savingProfile ? 'Sauvegarde...' : 'Sauvegarder'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* General Tab — Settings form */}
       {tab === 'general' && (

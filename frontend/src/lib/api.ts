@@ -141,6 +141,9 @@ export const register = (
 export const me = () =>
   client.get<{ id: string; email: string; full_name: string }>("/auth/me").then((r) => r.data)
 
+export const updateProfile = (data: { full_name?: string; email?: string; current_password?: string; new_password?: string }) =>
+  client.patch<{ id: string; email: string; full_name: string }>("/auth/me", data).then((r) => r.data)
+
 // ── Projects ────────────────────────────────────────────────────────
 export const getProjects = () =>
   client.get<ProjectData[]>("/projects").then((r) => r.data)
@@ -199,6 +202,7 @@ export const api = {
   login,
   register,
   me,
+  updateProfile,
   getProjects,
   createProject,
   getProject,

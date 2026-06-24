@@ -306,6 +306,7 @@ export default function ManagePrompts({ projectId, prompts, onClose, onRefresh }
                         </svg>
                       </button>
                     </div>
+                    </div>
                 );
               })
             )}

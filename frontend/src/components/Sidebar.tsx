@@ -30,11 +30,20 @@ export default function Sidebar() {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const { user, logout } = useAuth()
-  const [dark, setDark] = useState(() => document.documentElement.classList.contains("dark"))
+  const [dark, setDark] = useState(() => {
+    const saved = localStorage.getItem("theme")
+    if (saved === "dark") return true
+    if (saved === "light") return false
+    // Default: light mode
+    document.documentElement.classList.remove("dark")
+    return false
+  })
 
   const toggleTheme = () => {
-    document.documentElement.classList.toggle("dark")
-    setDark(document.documentElement.classList.contains("dark"))
+    const next = !dark
+    document.documentElement.classList.toggle("dark", next)
+    localStorage.setItem("theme", next ? "dark" : "light")
+    setDark(next)
   }
 
   const setLang = (lang: "fr" | "en") => {

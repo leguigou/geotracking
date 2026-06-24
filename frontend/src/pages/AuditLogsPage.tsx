@@ -29,8 +29,8 @@ export default function AuditLogsPage() {
     (async () => {
       try {
         const raw = await api.getAuditLogs();
-        if (cancelled) setLogs(Array.isArray(raw) ? (raw as LogEntry[]) : []);
-        else setLogs(Array.isArray(raw) ? (raw as LogEntry[]) : []);
+        if (cancelled) return;
+        setLogs((raw as unknown) as LogEntry[]);
       } catch { /* ignore */ }
       if (!cancelled) setLoading(false);
     })();

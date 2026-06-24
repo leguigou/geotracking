@@ -35,7 +35,7 @@ export default function SettingsPage() {
     setTestStatus('testing');
     setTestMessage('');
     try {
-      const result = await api.testOpenRouterKey();
+      const result = await api.testOpenRouterKey(apiKey);
       setTestStatus(result.status as 'ok' | 'error');
       setTestMessage(result.message);
     } catch {

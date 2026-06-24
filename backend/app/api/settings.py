@@ -18,6 +18,10 @@ class SettingsUpdate(BaseModel):
     settings: Dict[str, str]
 
 
+class TestKeyRequest(BaseModel):
+    api_key: str | None = None
+
+
 @router.get("")
 async def get_settings(
     current_user: User = Depends(get_current_user),
@@ -61,45 +65,61 @@ async def update_settings(
 
 @router.post("/test-openrouter")
 async def test_openrouter(
+    req: TestKeyRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Test si la clé API OpenRouter est valide en listant les modèles."""
-    result = await db.execute(
-        select(Setting).where(
-            Setting.organization_id == current_user.organization_id,
-            Setting.key == "openrouter_api_key",
+    """Test si la clé API OpenRouter est valide.
+
+    Si *api_key* est fournie dans le body, teste cette clé directement.
+    Sinon, lit la clé depuis les settings de l'organisation.
+    Utilise un vrai appel de completion (modèle minimal) pour valider l'auth.
+    """
+    api_key = req.api_key
+
+    # Si pas de clé dans la requête, lire depuis la DB
+    if not api_key:
+        result = await db.execute(
+            select(Setting).where(
+                Setting.organization_id == current_user.organization_id,
+                Setting.key == "openrouter_api_key",
+            )
         )
-    )
-    setting = result.scalar_one_or_none()
-    api_key = setting.value if setting else ""
+        setting = result.scalar_one_or_none()
+        api_key = setting.value if setting else ""
 
     if not api_key:
         raise HTTPException(status_code=400, detail="Aucune clé API configurée")
 
     try:
         async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(
-                "https://openrouter.ai/api/v1/models",
-                headers={"Authorization": f"Bearer {api_key}"},
+            resp = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "openai/gpt-4o-mini",
+                    "messages": [{"role": "user", "content": "Say OK"}],
+                    "max_tokens": 5,
+                },
             )
             if resp.status_code == 200:
-                data = resp.json()
-                models = [m["id"] for m in data.get("data", [])[:5]]
                 return {
                     "status": "ok",
-                    "message": f"Connexion réussie — {len(data.get('data', []))} modèles disponibles",
-                    "models": models,
+                    "message": "Connexion réussie — clé API valide",
                 }
-            elif resp.status_code == 401:
+            elif resp.status_code == 401 or resp.status_code == 403:
                 return {
                     "status": "error",
-                    "message": "Clé API invalide (HTTP 401)",
+                    "message": "Clé API invalide (refusée par OpenRouter)",
                 }
             else:
+                body = resp.text[:300]
                 return {
                     "status": "error",
-                    "message": f"Erreur HTTP {resp.status_code}: {resp.text[:200]}",
+                    "message": f"Erreur HTTP {resp.status_code}: {body}",
                 }
     except httpx.ConnectError:
         return {

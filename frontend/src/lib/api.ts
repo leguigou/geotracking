@@ -185,8 +185,8 @@ export const getSettings = () =>
 export const updateSettings = (settings: Record<string, unknown>) =>
   client.put<Record<string, unknown>>("/settings", settings).then((r) => r.data)
 
-export const testOpenRouterKey = () =>
-  client.post<{ status: string; message: string; models?: string[] }>("/settings/test-openrouter").then((r) => r.data)
+export const testOpenRouterKey = (apiKey?: string) =>
+  client.post<{ status: string; message: string; models?: string[] }>("/settings/test-openrouter", { api_key: apiKey || undefined }).then((r) => r.data)
 
 // ── Named export groupé pour compatibilité avec les pages existantes ─
 export const api = {

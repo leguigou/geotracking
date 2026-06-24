@@ -1,3 +1,4 @@
+import uuid
 """FastAPI dependencies."""
 
 from fastapi import Depends, HTTPException, status
@@ -19,7 +20,7 @@ async def get_current_user(
     if not payload or payload.get("type") != "access":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
-    user = await get_user_by_id(db, payload["sub"])
+    user = await get_user_by_id(db, uuid.UUID(payload["sub"]))
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
 

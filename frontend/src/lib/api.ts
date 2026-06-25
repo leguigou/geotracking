@@ -231,8 +231,10 @@ export const getLatestResults = (projectId: string | number) =>
 export const getScanHistory = (projectId: string | number) =>
   client.get<HistoryEntry[]>(`/projects/${projectId}/history`).then((r) => r.data)
 
-export const getScanStatus = (projectId: string | number) =>
-  client.get<ScanStatusData>(`/projects/${projectId}/scan/status`).then((r) => r.data)
+export const getScanStatus = (projectId: string | number, batchId?: string) => {
+  const params = batchId ? `?batch_id=${batchId}` : ''
+  return client.get<ScanStatusData>(`/projects/${projectId}/scan/status${params}`).then((r) => r.data)
+}
 
 export interface ScanStatusData {
   batch: {

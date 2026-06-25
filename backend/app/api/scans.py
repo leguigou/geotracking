@@ -211,24 +211,31 @@ async def list_results(
 @router.get("/{project_id}/scan/status")
 async def get_scan_status(
     project_id: str,
+    batch_id: str | None = Query(default=None),
     org_id=Depends(get_current_organization),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return the active (or last) scan batch with per-cell status matrix.
+    """Return scan batch status with per-cell matrix.
 
-    Returns the current scan batch status and a matrix of
-    prompts × models showing each job's status.
+    If ``batch_id`` is provided, returns data for that specific batch.
+    Otherwise returns the latest batch.
     """
     uid = _resolve_uuid(project_id)
     await _owned_project(db, uid, org_id)
 
-    # Find the active batch first, then fall back to the latest
-    batch_result = await db.execute(
-        select(ScanBatch)
-        .where(ScanBatch.project_id == uid)
-        .order_by(desc(ScanBatch.created_at))
-        .limit(1)
-    )
+    # Find the requested batch or the latest one
+    if batch_id:
+        batch_uuid = _resolve_uuid(batch_id)
+        batch_result = await db.execute(
+            select(ScanBatch).where(ScanBatch.id == batch_uuid, ScanBatch.project_id == uid)
+        )
+    else:
+        batch_result = await db.execute(
+            select(ScanBatch)
+            .where(ScanBatch.project_id == uid)
+            .order_by(desc(ScanBatch.created_at))
+            .limit(1)
+        )
     batch = batch_result.scalar_one_or_none()
     if not batch:
         return {"batch": None, "matrix": [], "prompts": [], "models": []}

@@ -42,18 +42,6 @@ function formatTime(iso: string) {
   return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
 }
 
-function getModelsFromHistory(entries: HistoryEntry[]): string[] {
-  const models = new Set<string>()
-  for (const e of entries) {
-    for (const key of Object.keys(e)) {
-      if (key !== 'batch_id' && key !== 'scan_date' && key !== 'status' && typeof e[key] === 'number') {
-        models.add(key)
-      }
-    }
-  }
-  return Array.from(models).sort()
-}
-
 // ── Component ─────────────────────────────────────────────────────
 
 export default function ProjectResponses() {

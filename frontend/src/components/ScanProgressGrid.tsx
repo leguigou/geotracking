@@ -287,6 +287,169 @@ export default function ScanProgressGrid({ matrix, models, batchStatus }: ScanPr
         <span className="flex items-center gap-1"><span className="text-xs">❌</span> Aucune mention</span>
         <span className="flex items-center gap-1"><span className="text-xs">⚠️</span> Échec</span>
       </div>
+
+      {/* Detailed results section */}
+      {completedJobs > 0 && (
+        <div className="mt-6 space-y-4">
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+            Résultats détaillés
+          </h3>
+          {matrix.map((row) =>
+            models.map((modelId) => {
+              const cell = row.models[modelId];
+              if (!cell || cell.status === 'pending' || cell.status === 'running') return null;
+              const model = modelDisplay(modelId);
+              const expandedId = `${row.prompt_id}-${modelId}`;
+              const isExpanded = selectedCell?.promptId === row.prompt_id && selectedCell?.modelId === modelId;
+              return (
+                <div
+                  key={expandedId}
+                  className={`rounded-xl border transition-all cursor-pointer ${
+                    isExpanded
+                      ? 'border-blue-300 dark:border-blue-500/50 shadow-md'
+                      : 'border-slate-200 dark:border-slate-700/50 hover:border-slate-300 dark:hover:border-slate-600'
+                  } bg-white dark:bg-slate-800/50 overflow-hidden`}
+                  onClick={() =>
+                    setSelectedCell(
+                      isExpanded
+                        ? null
+                        : { promptId: row.prompt_id, promptText: row.prompt_text, modelId, data: cell }
+                    )
+                  }
+                >
+                  {/* Card header */}
+                  <div className="flex items-center gap-3 px-4 py-3 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-100 dark:border-slate-700/30">
+                    <div className={`w-7 h-7 rounded-lg ${model.iconBg} ${model.iconColor} flex items-center justify-center text-xs font-bold shrink-0`}>
+                      {model.letter}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-slate-900 dark:text-white">{model.label}</span>
+                        {cellIcon(cell.status, cell.has_url, cell.has_brand)}
+                        {cell.rank != null && (
+                          <span className="text-[11px] font-medium text-slate-400">#{cell.rank}</span>
+                        )}
+                        {cell.latency_ms != null && (
+                          <span className="text-[11px] text-slate-400">{(cell.latency_ms / 1000).toFixed(1)}s</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                        &ldquo;{row.prompt_text}&rdquo;
+                      </p>
+                    </div>
+                    <svg
+                      className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                      fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </div>
+
+                  {/* Collapsible content */}
+                  {isExpanded && (
+                    <div className="p-4 space-y-4">
+                      {/* Response text */}
+                      {cell.response_snippet && (
+                        <div>
+                          <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                            Réponse du modèle
+                          </p>
+                          <pre className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-3 text-xs leading-relaxed text-slate-700 dark:text-slate-300 font-mono whitespace-pre-wrap max-h-60 overflow-y-auto border border-slate-200 dark:border-slate-700/50">
+                            {cell.response_snippet}
+                          </pre>
+                        </div>
+                      )}
+
+                      {/* Stats grid */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {cell.has_url !== undefined && (
+                          <div className="bg-slate-50 dark:bg-slate-900/30 rounded-lg p-2.5 border border-slate-200 dark:border-slate-700/30">
+                            <p className="text-[10px] text-slate-400">URL présente</p>
+                            <p className={`text-sm font-bold ${cell.has_url ? 'text-emerald-600' : 'text-red-500'}`}>
+                              {cell.has_url ? 'Oui' : 'Non'}
+                            </p>
+                          </div>
+                        )}
+                        {cell.has_brand !== undefined && (
+                          <div className="bg-slate-50 dark:bg-slate-900/30 rounded-lg p-2.5 border border-slate-200 dark:border-slate-700/30">
+                            <p className="text-[10px] text-slate-400">Marque présente</p>
+                            <p className={`text-sm font-bold ${cell.has_brand ? 'text-emerald-600' : 'text-red-500'}`}>
+                              {cell.has_brand ? 'Oui' : 'Non'}
+                            </p>
+                          </div>
+                        )}
+                        {cell.rank != null && (
+                          <div className="bg-slate-50 dark:bg-slate-900/30 rounded-lg p-2.5 border border-slate-200 dark:border-slate-700/30">
+                            <p className="text-[10px] text-slate-400">Position</p>
+                            <p className="text-sm font-bold text-slate-900 dark:text-white">#{cell.rank}</p>
+                          </div>
+                        )}
+                        {cell.latency_ms != null && (
+                          <div className="bg-slate-50 dark:bg-slate-900/30 rounded-lg p-2.5 border border-slate-200 dark:border-slate-700/30">
+                            <p className="text-[10px] text-slate-400">Latence</p>
+                            <p className="text-sm font-bold text-slate-900 dark:text-white">{(cell.latency_ms / 1000).toFixed(1)}s</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Competitors */}
+                      {cell.competitors && cell.competitors.length > 0 && (
+                        <div>
+                          <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                            Concurrents cités ({cell.competitors.length})
+                          </p>
+                          <div className="space-y-1">
+                            {cell.competitors.map((c, i) => (
+                              <div
+                                key={i}
+                                className="flex items-center justify-between text-xs bg-slate-50 dark:bg-slate-900/30 rounded-lg px-3 py-2 border border-slate-200 dark:border-slate-700/30"
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-500 dark:text-slate-400 shrink-0">
+                                    {i + 1}
+                                  </span>
+                                  <span className="truncate font-medium text-slate-700 dark:text-slate-300">{c.name}</span>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0 ml-2">
+                                  {c.rank != null && (
+                                    <span className="text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded font-medium">
+                                      #{c.rank}
+                                    </span>
+                                  )}
+                                  {c.url && (
+                                    <a
+                                      href={c.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-blue-500 hover:text-blue-600"
+                                      title={c.url}
+                                    >
+                                      <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                                      </svg>
+                                    </a>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {cell.error && (
+                        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/30 rounded-lg p-3">
+                          <p className="text-[11px] font-semibold text-red-600 dark:text-red-400 uppercase tracking-wider mb-1">Erreur</p>
+                          <p className="text-xs text-red-700 dark:text-red-300">{cell.error}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
     </div>
   );
 }

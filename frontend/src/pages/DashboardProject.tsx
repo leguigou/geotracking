@@ -564,7 +564,7 @@ export default function DashboardProject() {
                     <div className="flex items-center gap-2">
                       {sovKeys.map(key => (
                         <span key={key} className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400">
-                          {key.split('/').pop()}: {entry[key]}%
+                          {key.split('/').pop()}: {Number(entry[key]) || 0}%
                         </span>
                       ))}
                       <svg className={`w-4 h-4 text-slate-400 transition-transform ${isSelected ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">

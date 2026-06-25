@@ -151,6 +151,7 @@ export interface HistoryEntry {
   batch_id: string
   scan_date: string
   status?: string
+  failed_jobs?: number
   chatgpt?: number
   claude?: number
   perplexity?: number

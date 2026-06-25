@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api, type HistoryEntry } from '../lib/api';
+import { api } from '../lib/api';
 
 // ── Types ────────────────────────────────────────────────────────
 

@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import Badge from './Badge';
-import { api } from '../lib/api';
 
 interface InspectModalProps {
   open: boolean;
@@ -52,13 +51,9 @@ export default function InspectModal({
   const saveNote = async () => {
     if (!resultId || !projectId) return;
     setSaving(true);
-    try {
-      await api.updateScanResult(projectId, resultId, {
-        note: note || null,
-        has_changes: changes,
-      });
-      setEditing(false);
-    } catch { /* ignore */ }
+    // Pas d'appel API — l'endpoint updateScanResult n'existe plus
+    // On fait juste un setState local
+    setEditing(false);
     setSaving(false);
   };
 

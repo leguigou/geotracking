@@ -1,7 +1,24 @@
 /// Transforme les données brutes de l'API backend
 /// en formats utilisables par les composants du dashboard.
 
-import type { ScanResultData } from "./api";
+// Type local — l'API ne fournit plus ce type
+export interface ScanResultData {
+  id: string;
+  model: string;
+  prompt_id: string | number;
+  prompt_text: string;
+  response_text: string;
+  has_url: boolean;
+  has_brand: boolean;
+  rank: number | null;
+  scanned_at: string;
+  latency_ms: number | null;
+  tokens_used: number | null;
+  cost: number | null;
+  note: string | null;
+  has_changes: boolean;
+  [key: string]: unknown;
+}
 
 // Mapping OpenRouter model IDs → infos d'affichage frontend
 export const LLM_UI_MAP: Record<string, { label: string; letter: string; barColor: string; iconBg: string; iconColor: string; chartColor: string }> = {

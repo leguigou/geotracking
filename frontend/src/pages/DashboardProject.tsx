@@ -6,7 +6,7 @@ import PromptMatrix from '../components/PromptMatrix';
 import InspectModal from '../components/InspectModal';
 import { useProject, usePrompts } from '../hooks/useApi';
 import { api, type LatestResultsData, type HistoryEntry, type OpenRouterModel } from '../lib/api';
-import { modelDisplay, providerKey } from '../lib/modelMap';
+import { modelDisplay } from '../lib/modelMap';
 import ManagePrompts from '../components/ManagePrompts';
 import ScanHistory from '../components/ScanHistory';
 
@@ -126,15 +126,14 @@ export default function DashboardProject() {
 
   /* ── Inspect modal ──────────────────────────────────────── */
   const [inspectProps, setInspectProps] = useState<{
-    open: boolean;
     llm: string;
     prompt: string;
     responseSnippet: string | null;
     mentioned: boolean;
     position: number | null;
-    hasChanges: boolean;
-    note: string | null;
-    resultId: string;
+    hasChanges?: boolean;
+    note?: string | null;
+    resultId?: string;
   } | null>(null);
 
   /* ── SOV cards ──────────────────────────────────────────── */
@@ -627,6 +626,7 @@ export default function DashboardProject() {
       {/* Inspect Modal */}
       {inspectProps && (
         <InspectModal
+          open={true}
           onClose={() => setInspectProps(null)}
           projectId={id}
           {...inspectProps}

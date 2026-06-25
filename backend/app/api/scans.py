@@ -287,7 +287,7 @@ async def get_scan_status(
                     "rank": result.rank,
                     "error": result.error,
                     "latency_ms": result.latency_ms,
-                    "response_snippet": result.response_text[:300] if result.response_text else None,
+                    "response_snippet": result.response_text if result.response_text else None,
                     "competitors": competitors,
                 }
             else:

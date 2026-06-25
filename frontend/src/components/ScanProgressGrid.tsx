@@ -22,102 +22,6 @@ function cellIcon(status: string, hasUrl: boolean, hasBrand: boolean) {
   }
 }
 
-/* ── Popover detail ──────────────────────────────────────────────── */
-
-interface CellDetailProps {
-  modelId: string;
-  data: NonNullable<ScanStatusData['matrix'][number]['models'][string]>;
-  promptText: string;
-  onClose: () => void;
-}
-
-function CellPopover({ modelId, data, promptText, onClose }: CellDetailProps) {
-  const model = modelDisplay(modelId);
-  return (
-    <>
-      {/* Backdrop */}
-      <div className="fixed inset-0 z-40" onClick={onClose} />
-      {/* Popover */}
-      <div className="absolute z-50 mt-2 w-80 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl bg-white/90 dark:bg-slate-800/90 backdrop-blur-xl p-4 space-y-3 text-sm animate-in fade-in slide-in-from-top-2">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <div className={`w-6 h-6 rounded-lg ${model.iconBg} ${model.iconColor} flex items-center justify-center text-[10px] font-bold`}>
-              {model.letter}
-            </div>
-            <span className="font-semibold text-slate-900 dark:text-white text-xs">{model.label}</span>
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        <p className="text-xs text-slate-500 dark:text-slate-400 italic line-clamp-3 bg-slate-100 dark:bg-slate-700/50 rounded-lg p-2">
-          &ldquo;{promptText}&rdquo;
-        </p>
-
-        {data.response_snippet && (
-          <div>
-            <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Réponse</p>
-            <p className="text-xs text-slate-700 dark:text-slate-300 line-clamp-4 bg-slate-100 dark:bg-slate-700/50 rounded-lg p-2 font-mono">
-              {data.response_snippet}
-            </p>
-          </div>
-        )}
-
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          {data.rank != null && (
-            <div className="bg-slate-100 dark:bg-slate-700/50 rounded-lg p-2">
-              <p className="text-[10px] text-slate-400">Rank</p>
-              <p className="font-semibold text-slate-900 dark:text-white">#{data.rank}</p>
-            </div>
-          )}
-          {data.latency_ms != null && (
-            <div className="bg-slate-100 dark:bg-slate-700/50 rounded-lg p-2">
-              <p className="text-[10px] text-slate-400">Latence</p>
-              <p className="font-semibold text-slate-900 dark:text-white">{(data.latency_ms / 1000).toFixed(1)}s</p>
-            </div>
-          )}
-        </div>
-
-        {data.competitors.length > 0 && (
-          <div>
-            <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
-              Concurrents ({data.competitors.length})
-            </p>
-            <div className="space-y-1 max-h-28 overflow-y-auto">
-              {data.competitors.map((c, i) => (
-                <div key={i} className="flex items-center justify-between text-xs bg-slate-100 dark:bg-slate-700/50 rounded-lg px-2.5 py-1.5">
-                  <span className="truncate text-slate-700 dark:text-slate-300 font-medium">{c.name}</span>
-                  <div className="flex items-center gap-2 shrink-0 ml-2">
-                    {c.rank != null && <span className="text-[10px] text-slate-400">#{c.rank}</span>}
-                    {c.url && (
-                      <a
-                        href={c.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-500 hover:text-blue-600"
-                        title={c.url}
-                      >
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-                        </svg>
-                      </a>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
-
-/* ── Component ───────────────────────────────────────────────────── */
-
 interface ScanProgressGridProps {
   matrix: ScanStatusData['matrix'];
   models: string[];
@@ -259,17 +163,6 @@ export default function ScanProgressGrid({ matrix, models, batchStatus }: ScanPr
                       >
                         {cellIcon(cell.status, cell.has_url, cell.has_brand)}
                       </button>
-                      {/* Popover for this cell */}
-                      {selectedCell?.promptId === row.prompt_id && selectedCell?.modelId === modelId && (
-                        <div className="absolute left-1/2 -translate-x-1/2 top-full z-50">
-                          <CellPopover
-                            modelId={modelId}
-                            data={cell}
-                            promptText={row.prompt_text}
-                            onClose={() => setSelectedCell(null)}
-                          />
-                        </div>
-                      )}
                     </td>
                   );
                 })}

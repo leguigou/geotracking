@@ -208,6 +208,101 @@ async def list_results(
     ]
 
 
+@router.get("/{project_id}/scan/status")
+async def get_scan_status(
+    project_id: str,
+    org_id=Depends(get_current_organization),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the active (or last) scan batch with per-cell status matrix.
+
+    Returns the current scan batch status and a matrix of
+    prompts × models showing each job's status.
+    """
+    uid = _resolve_uuid(project_id)
+    await _owned_project(db, uid, org_id)
+
+    # Find the active batch first, then fall back to the latest
+    batch_result = await db.execute(
+        select(ScanBatch)
+        .where(ScanBatch.project_id == uid)
+        .order_by(desc(ScanBatch.created_at))
+        .limit(1)
+    )
+    batch = batch_result.scalar_one_or_none()
+    if not batch:
+        return {"batch": None, "matrix": [], "prompts": [], "models": []}
+
+    # Fetch all prompts for this project
+    prompts_result = await db.execute(
+        select(Prompt)
+        .where(Prompt.project_id == uid, Prompt.is_active.is_(True))
+        .order_by(Prompt.created_at)
+    )
+    prompts = prompts_result.scalars().all()
+
+    # Get results for this batch
+    results_result = await db.execute(
+        select(ScanResult).where(ScanResult.batch_id == batch.id)
+    )
+    results = list(results_result.scalars().all())
+
+    # Build a lookup: (prompt_id, model) -> result
+    result_map: dict[tuple[uuid.UUID, str], ScanResult] = {}
+    for r in results:
+        result_map[(r.prompt_id, r.model)] = r
+
+    # Determine models used in this batch
+    models: list[str] = []
+    if batch.requested_model:
+        models = [batch.requested_model]
+    else:
+        # Collect unique models from results or project config
+        project = await db.get(Project, uid)
+        if project and project.enabled_models:
+            models = list(project.enabled_models)
+
+    # Build matrix
+    matrix: list[dict] = []
+    for prompt in prompts:
+        row: dict = {
+            "prompt_id": str(prompt.id),
+            "prompt_text": prompt.text,
+            "theme": prompt.theme,
+        }
+        cells: dict = {}
+        for model in models:
+            result = result_map.get((prompt.id, model))
+            if result:
+                cells[model] = {
+                    "status": "completed" if not result.error else "failed",
+                    "has_url": result.has_url,
+                    "has_brand": result.has_brand,
+                    "rank": result.rank,
+                    "error": result.error,
+                    "latency_ms": result.latency_ms,
+                }
+            else:
+                cells[model] = {"status": "pending", "has_url": False, "has_brand": False}
+        row["models"] = cells
+        matrix.append(row)
+
+    return {
+        "batch": {
+            "id": str(batch.id),
+            "status": batch.status,
+            "total_jobs": batch.total_jobs,
+            "completed_jobs": batch.completed_jobs,
+            "failed_jobs": batch.failed_jobs,
+            "created_at": batch.created_at.isoformat(),
+            "completed_at": batch.completed_at.isoformat() if batch.completed_at else None,
+        },
+        "matrix": matrix,
+        "prompts": [{"id": str(p.id), "text": p.text, "theme": p.theme} for p in prompts],
+        "models": models,
+    }
+
+
 def _summarise_results(results: list[ScanResult], prompts_by_id: dict) -> tuple[dict, list, SOVStats]:
     provider_groups: dict[str, list[ScanResult]] = {}
     prompt_groups: dict[uuid.UUID, list[ScanResult]] = {}

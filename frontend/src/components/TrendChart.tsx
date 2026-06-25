@@ -86,7 +86,7 @@ export default function TrendChart({ labels, datasets, height = 260, chartId }: 
             grid: { color: gridColor },
             ticks: { color: textColor, font: { size: 11 }, callback: (v) => v + '%' },
             min: 0,
-            max: 60,
+            max: 100,
           },
         },
       },

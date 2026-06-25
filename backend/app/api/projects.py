@@ -12,6 +12,7 @@ from app.database import get_db
 from app.dependencies import get_current_user, get_current_organization
 from app.models.user import User
 from app.models.project import Project, Prompt
+from app.models.scan_result import ScanBatch, ScanResult
 from app.schemas.project import (
     ProjectCreate, ProjectUpdate, ProjectResponse,
     PromptCreate, PromptResponse,
@@ -57,6 +58,7 @@ async def create_project(
         organization_id=org_id,
         name=req.name,
         target_url=req.target_url,
+        description=req.description,
         brand_names=req.brand_names,
         enabled_models=final_models,
         frequency=req.frequency,
@@ -125,6 +127,8 @@ async def delete_project(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     await log_action(db, current_user.organization_id, current_user.id, "project.deleted", "project", str(project.id), {"name": project.name})
+    await db.execute(delete(ScanResult).where(ScanResult.project_id == uid))
+    await db.execute(delete(ScanBatch).where(ScanBatch.project_id == uid))
     await db.delete(project)
 
 
@@ -222,10 +226,16 @@ async def delete_prompt(
 ):
     uid = _resolve_project_id(project_id)
     pid = _resolve_project_id(prompt_id)
+    project_result = await db.execute(
+        select(Project).where(Project.id == uid, Project.organization_id == org_id)
+    )
+    if not project_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Project not found")
     result = await db.execute(
         select(Prompt).where(Prompt.id == pid, Prompt.project_id == uid)
     )
     prompt = result.scalar_one_or_none()
     if not prompt:
         raise HTTPException(status_code=404, detail="Prompt not found")
+    await db.execute(delete(ScanResult).where(ScanResult.prompt_id == pid))
     await db.delete(prompt)

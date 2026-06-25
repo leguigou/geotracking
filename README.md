@@ -1,169 +1,110 @@
 # GEOTrack AI
 
-**GEO/LLM Rank Tracker** — Suivez la visibilité de vos sites internet sur les moteurs de réponse IA (ChatGPT, Claude, Perplexity, Gemini, Grok).
+GEOTrack mesure la visibilité d'une marque dans les réponses des moteurs IA via OpenRouter. Un projet représente un site, ses prompts sont regroupés par thème et chaque campagne produit un lot de résultats comparable dans le temps.
 
-## Concept
+Le **SOV (Share of Voice)** est la part des réponses dans lesquelles la marque ou le domaine suivi est cité.
 
-### Projet = Site Internet
+## Fonctionnalités
 
-Chaque **projet** représente un site internet dont vous voulez suivre la visibilité.
+- catalogue OpenRouter en direct avec choix du modèle exact et affichage des tarifs ;
+- scans manuels ou planifiés (`daily`, `weekly`, `biweekly`, `monthly`) ;
+- lots de scan idempotents, progression, erreurs visibles et reprise des erreurs transitoires ;
+- détection des mentions de marque et de domaine, coût et latence par réponse ;
+- dashboard consolidé, évolution quotidienne et matrice projets × fournisseurs ;
+- matrice prompts × modèles avec cinq états : mentionné, absent, en attente, erreur et non scanné ;
+- export CSV et historique des campagnes ;
+- isolation des données par organisation.
 
-### Thématiques (groupes de prompts)
-
-Au sein d'un projet, vous organisez vos **questions/prompts** par **thématique** (univers métier, catégorie de produits, etc.). Chaque thématique produit son propre rapport.
-
-```
-Cabesto (projet)
-├── 🌊 Piscine (thématique)
-│   ├── "piscine aubagne"
-│   ├── "constructeur piscine 13"
-│   └── "prix piscine coque"
-├── 🌿 Jardin (thématique)
-│   ├── "jardinier paysagiste Aubagne"
-│   └── "amenagement terrasse"
-└── 👕 Équipement (thématique)
-    ├── "vetement securite travail"
-    └── "epi bouches du rhone"
-```
-
-Les LLMs sont interrogés avec ces questions. Le **SOV (Share of Voice)** mesure le pourcentage de réponses où votre site apparaît.
-
-## Stack
+## Architecture
 
 | Couche | Technologie |
-|--------|------------|
-| **Frontend** | React 20 + TypeScript + Vite + Tailwind CSS v4 |
-| **Backend** | Python 3.13 + FastAPI + SQLAlchemy (async) |
-| **Base de données** | PostgreSQL 16 |
-| **Cache / Queue** | Redis 7 |
-| **LLM Router** | OpenRouter (un seul provider, modèle configurable par prompt) |
-| **Déploiement** | Docker Compose sur Dokploy (VM OVH) |
-| **Proxy** | Traefik (HTTPS via Let's Encrypt) |
+| --- | --- |
+| Frontend | React 19, TypeScript, Vite 8, Tailwind CSS 4 |
+| API | Python, FastAPI, SQLAlchemy async, Alembic |
+| Base | PostgreSQL 16 (SQLite possible pour le développement et les tests) |
+| Queue | Redis 7 + ARQ |
+| IA | OpenRouter |
+| Production | Docker Compose, Nginx, Dokploy/Traefik |
 
-## Modèle de données
+Trois processus backend distincts utilisent la même image :
 
-```
-Organization
-├── id: UUID
-├── name: String
-├── slug: String
-│
-├── User
-│   ├── id: UUID
-│   ├── email: String
-│   ├── password_hash: String
-│   ├── role: "admin" | "user"
-│   └── organization_id → Organization
-│
-├── Project (un site internet)
-│   ├── id: UUID
-│   ├── name: String ("Cabesto")
-│   ├── target_url: String ("www.cabesto.com")
-│   ├── brand_names: String[] ("Cabesto")
-│   ├── enabled_models: String[] ("chatgpt", "claude", ...)
-│   ├── frequency: String ("daily")
-│   ├── is_active: Boolean
-│   └── organization_id → Organization
-│
-├── Prompt (une question / mot-clé)
-│   ├── id: UUID
-│   ├── text: String ("piscine aubagne")
-│   ├── theme: String? ("Piscine", "Jardin", null)
-│   └── project_id → Project
-│
-└── ScanResult (résultat d'un scan LLM)
-    ├── id: UUID
-    ├── model: String ("chatgpt")
-    ├── response_text: Text
-    ├── has_url: Boolean (le site est mentionné ?)
-    ├── has_brand: Boolean (la marque est mentionnée ?)
-    ├── rank: Int? (position si présente)
-    ├── latency_ms: Int
-    ├── tokens_used: Int
-    ├── cost: Float
-    └── prompt_id → Prompt
-```
+- `backend` sert l'API et applique les migrations au démarrage ;
+- `worker` exécute les appels OpenRouter ;
+- `scheduler` programme les scans récurrents à partir de l'état conservé en base.
 
-## API — Principaux endpoints
+Les anciens projets configurés avec des alias comme `chatgpt` ou `claude` sont automatiquement convertis vers des identifiants OpenRouter réels.
 
-### Auth
-| Méthode | Route | Description |
-|---------|-------|-------------|
-| `POST` | `/api/auth/register` | Inscription (crée org + user admin) |
-| `POST` | `/api/auth/login` | Connexion → access_token + refresh_token |
-| `POST` | `/api/auth/refresh` | Rafraîchir le token |
-| `GET` | `/api/auth/me` | Profil utilisateur connecté |
+## Démarrage local
 
-### Projects
-| Méthode | Route | Description |
-|---------|-------|-------------|
-| `GET` | `/api/projects` | Liste des projets de l'organisation |
-| `POST` | `/api/projects` | Créer un projet |
-| `GET` | `/api/projects/{id}` | Détail d'un projet |
-| `PATCH` | `/api/projects/{id}` | Modifier un projet |
-| `DELETE` | `/api/projects/{id}` | Supprimer un projet |
-
-### Prompts
-| Méthode | Route | Description |
-|---------|-------|-------------|
-| `GET` | `/api/projects/{id}/prompts` | Liste des prompts d'un projet |
-| `POST` | `/api/projects/{id}/prompts` | Ajouter des prompts (body: `{texts: [...]}`) |
-| `DELETE` | `/api/projects/{id}/prompts/{pid}` | Supprimer un prompt |
-
-### Scan & Résultats
-| Méthode | Route | Description |
-|---------|-------|-------------|
-| `POST` | `/api/projects/{id}/scan` | Déclencher un scan manuel |
-| `GET` | `/api/projects/{id}/results` | Historique des résultats |
-| `GET` | `/api/projects/{id}/results/latest` | Dernier scan (SOV + détails) |
-
-## Développement
-
-### Prérequis
-- Python 3.13+ (backend)
-- Node.js 20+ (frontend)
-- PostgreSQL 16
-- Redis 7
-- Une clé API [OpenRouter](https://openrouter.ai/)
-
-### Backend
+Prérequis : Python 3.11+, Node.js 20+, Redis et une clé OpenRouter configurée dans les paramètres de l'organisation.
 
 ```bash
 cd backend
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+python -m venv .venv
+# PowerShell : .venv\Scripts\Activate.ps1
+pip install -r requirements-dev.lock
+alembic upgrade head
 uvicorn app.main:app --reload --port 8000
 ```
 
-### Frontend
+Dans deux autres terminaux backend :
+
+```bash
+arq app.services.scan_queue.WorkerSettings
+python -m app.services.scheduler
+```
+
+Puis le frontend :
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
-Le frontend utilise Vite → accessible sur `http://localhost:5173`
-Les appels API sont proxyfiés vers `http://localhost:8000` en dev.
+Le frontend est disponible sur `http://localhost:5173` et transmet `/api` à l'API sur le port 8000.
 
-## Production
-
-Le déploiement se fait via **Docker Compose** sur **Dokploy** (VM OVH).
+## Déploiement Docker
 
 ```bash
 docker compose up -d --build
 ```
 
-Le reverse proxy est géré par **Traefik** avec certificats Let's Encrypt.
-
-### Variables d'environnement
+Variables principales :
 
 | Variable | Description |
-|----------|-------------|
-| `DATABASE_URL` | PostgreSQL connection string |
-| `REDIS_URL` | Redis connection string |
-| `OPENROUTER_API_KEY` | Clé API OpenRouter |
-| `JWT_SECRET` | Secret pour les tokens JWT |
+| --- | --- |
+| `DATABASE_URL` | URL SQLAlchemy de PostgreSQL |
+| `REDIS_URL` | URL Redis partagée par l'API, le worker et le scheduler |
+| `JWT_SECRET` | Secret de signature des jetons |
+| `DOKPLOY_EXTERNAL_RESOURCES` | `true` si le réseau et le volume sont déjà gérés par Dokploy |
+
+La clé OpenRouter est enregistrée dans les paramètres de chaque organisation. Les valeurs sensibles et leur stratégie de stockage restent à traiter séparément.
+
+## API utile
+
+| Méthode | Route | Description |
+| --- | --- | --- |
+| `POST` | `/api/projects/{id}/scan` | Crée ou reprend un lot de scan |
+| `GET` | `/api/projects/{id}/results/latest` | Dernier lot, progression et résultats |
+| `GET` | `/api/projects/{id}/history` | Historique des lots |
+| `GET` | `/api/dashboard/overview` | Métriques consolidées en une requête |
+| `GET` | `/api/settings/models` | Catalogue OpenRouter et recommandations |
+
+La documentation interactive complète est disponible sur `/docs` lorsque l'API tourne.
+
+## Qualité
+
+```bash
+cd backend
+pytest -q --cov=app --cov-fail-under=55
+
+cd ../frontend
+npm run lint
+npm run build
+```
+
+Les tests d'intégration Redis sont activés avec `RUN_REDIS_TESTS=1`. Le test de complétion OpenRouter réel est volontairement optionnel et nécessite `OPENROUTER_TEST_API_KEY`.
 
 ## Licence
 

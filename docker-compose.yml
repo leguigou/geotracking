@@ -18,6 +18,7 @@ services:
       DATABASE_URL: "postgresql+asyncpg://geotrack:geotrack_pass@db:5432/geotrack"
       REDIS_URL: "redis://redis:6379/0"
       CORS_ORIGINS: "https://geotrack.deloffre.fr"
+      ENVIRONMENT: "${ENVIRONMENT:-production}"
       JWT_SECRET: "${JWT_SECRET:-change-me-in-dokploy-env}"
       JWT_ACCESS_EXPIRE_MINUTES: "60"
       JWT_REFRESH_EXPIRE_DAYS: "30"
@@ -54,9 +55,9 @@ services:
 volumes:
   pgdata:
     name: geotrack_pgdata
-    external: true
+    external: ${DOKPLOY_EXTERNAL_RESOURCES:-false}
 
 networks:
   default:
     name: dokploy-network
-    external: true
+    external: ${DOKPLOY_EXTERNAL_RESOURCES:-false}

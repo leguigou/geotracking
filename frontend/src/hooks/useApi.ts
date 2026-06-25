@@ -4,7 +4,7 @@ import {
   getProject,
   getPrompts,
   getLatestResults,
-  getResults,
+  getScanHistory,
   type ProjectData,
   type PromptData,
   type LatestResultsData,
@@ -114,8 +114,8 @@ export function useHistory(projectId: string | number | undefined) {
     if (projectId == null) return
     setLoading(true)
     try {
-      const result = await getResults(projectId)
-      setData(result as HistoryEntry[])
+      const result = await getScanHistory(projectId)
+      setData(result)
     } catch {
       setData(null)
     } finally {

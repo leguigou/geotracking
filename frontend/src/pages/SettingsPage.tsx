@@ -35,14 +35,14 @@ export default function SettingsPage() {
   const [testMessage, setTestMessage] = useState('');
 
   // Modèles disponibles (depuis OpenRouter)
-  const [availableModelIds, setAvailableModelIds] = useState<string[]>([]);
+  const [availableProviders, setAvailableProviders] = useState<string[]>([]);
   const [checkingModels, setCheckingModels] = useState(true);
 
   useEffect(() => {
     (async () => {
       try {
         const data = await api.getAvailableModels();
-        setAvailableModelIds(data.models.map((m) => m.id));
+        setAvailableProviders(Object.keys(data.recommended || {}));
         setCheckingModels(false);
       } catch {
         setCheckingModels(false);
@@ -52,7 +52,7 @@ export default function SettingsPage() {
 
   const isModelAvailable = (id: string) => {
     // Vérifie si le modèle est disponible dans la liste OpenRouter
-    return availableModelIds.some((m) => m.toLowerCase().includes(id.toLowerCase()));
+    return availableProviders.includes(id);
   };
 
   // Profile form state
@@ -121,7 +121,7 @@ export default function SettingsPage() {
         setFrequency((settings.frequency as string) || 'weekly');
         setNotifications(
           settings.notifications_enabled != null
-            ? Boolean(settings.notifications_enabled)
+            ? String(settings.notifications_enabled).toLowerCase() === 'true'
             : true
         );
         setLanguage((settings.language as string) || 'fr');
@@ -132,7 +132,7 @@ export default function SettingsPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [user?.email, user?.full_name]);
 
   const toggleModel = (id: string) => {
     setModelsEnabled((prev) =>

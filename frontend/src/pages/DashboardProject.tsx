@@ -557,7 +557,7 @@ export default function DashboardProject() {
                         </p>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
                           {entry.status === 'completed' ? 'Terminé' : entry.status}
-                          {entry.failed_jobs > 0 && ` · ${entry.failed_jobs} échec(s)`}
+                          {(entry.failed_jobs ?? 0) > 0 && ` · ${entry.failed_jobs ?? 0} échec(s)`}
                         </p>
                       </div>
                     </div>

@@ -21,7 +21,7 @@ from app.models.user import User
 from app.services.audit import log_action
 from app.services.openrouter import model_provider_key, resolve_legacy_project_models
 from app.services.scan_queue import enqueue_scan
-from app.services.scanner import calculate_sov
+from app.services.scanner import calculate_sov, run_assertions
 
 router = APIRouter(prefix="/projects", tags=["scans"])
 
@@ -254,16 +254,16 @@ async def get_scan_status(
 
     # Determine models used in this batch
     models: list[str] = []
+    project = await db.get(Project, uid)
     if batch.requested_model:
         models = [batch.requested_model]
-    else:
-        # Collect unique models from results or project config
-        project = await db.get(Project, uid)
-        if project and project.enabled_models:
-            models = list(project.enabled_models)
+    elif project and project.enabled_models:
+        models = list(project.enabled_models)
 
     # Build matrix
     matrix: list[dict] = []
+    project_target_url = project.target_url if project else ""
+    project_brands = project.brand_names or [] if project else []
     for prompt in prompts:
         row: dict = {
             "prompt_id": str(prompt.id),
@@ -274,6 +274,12 @@ async def get_scan_status(
         for model in models:
             result = result_map.get((prompt.id, model))
             if result:
+                # Compute competitors from response_text
+                competitors = []
+                if result.response_text:
+                    comps = run_assertions(result.response_text, project_target_url, project_brands).get("competitors", [])
+                    competitors = [c for c in comps if not c["is_target"]][:10]
+
                 cells[model] = {
                     "status": "completed" if not result.error else "failed",
                     "has_url": result.has_url,
@@ -281,6 +287,8 @@ async def get_scan_status(
                     "rank": result.rank,
                     "error": result.error,
                     "latency_ms": result.latency_ms,
+                    "response_snippet": result.response_text[:300] if result.response_text else None,
+                    "competitors": competitors,
                 }
             else:
                 cells[model] = {"status": "pending", "has_url": False, "has_brand": False}

@@ -162,9 +162,10 @@ def run_assertions(
 
     Returns
     -------
-    dict with keys ``has_url``, ``has_brand``, ``rank``.
+    dict with keys ``has_url``, ``has_brand``, ``rank``, ``competitors``.
     ``rank`` is the 1-based position of the first numbered list item that
     mentions the URL or brand; ``None`` if not found in a list.
+    ``competitors`` is a list of dicts ``{"name": str, "url": str | None, "rank": int | None}``
     """
     cleaned = _strip_markdown_url(response_text)
     target_lower = _normalise_domain(target_url)
@@ -179,19 +180,111 @@ def run_assertions(
     rank = None
     for line in response_text.split("\n"):
         stripped = line.strip()
-        match = re.match(r"^\s*(?:(\d+)[.)]\s+)", stripped)
+        match = re.match(r"^\s*(?:(\\d+)[.)]\\s+)", stripped)
         if match:
             item_num = int(match.group(1))
-            item_body = stripped[match.end() :].lower()
+            item_body = stripped[match.end():].lower()
             if target_lower in item_body or any(_contains_brand(item_body, brand) for brand in brand_names):
                 rank = item_num
                 break
+
+    # --- Competitor extraction ---
+    competitors = _extract_competitors(response_text, target_url, brand_names)
 
     return {
         "has_url": has_url,
         "has_brand": has_brand,
         "rank": rank,
+        "competitors": competitors,
     }
+
+
+# ---------------------------------------------------------------------------
+# Competitor extraction
+# ---------------------------------------------------------------------------
+_URL_RE = re.compile(r"https?://(?:www\.)?([a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2,})?)(?:/\S*)?")
+_LIST_ITEM_RE = re.compile(r"^\s*(?:(\\d+)[.)]\\s+)(.+)$", re.MULTILINE)
+_BRAND_CLEAN_RE = re.compile(r"[’'\"«»“”,;:!?().\[\]{} ]+")
+
+
+def _extract_competitors(
+    response_text: str,
+    target_url: str,
+    brand_names: list[str],
+) -> list[dict]:
+    """Extract all competitors (URLs + named entities) from an LLM response.
+
+    Returns a sorted list of unique competitors, each with:
+      - name: display name (brand or domain)
+      - url: the actual URL if found
+      - rank: position in numbered list (1-based) or None
+      - is_target: True if this IS the target brand/URL being tracked
+    """
+    target_domain = _normalise_domain(target_url)
+    all_brands_lower = set(b.lower().strip() for b in brand_names if b.strip())
+
+    seen: set[str] = set()
+    competitors: list[dict] = []
+
+    # 1. Extract all URLs from the text
+    for match in _URL_RE.finditer(response_text):
+        domain = match.group(1).lower().removeprefix("www.")
+        if domain not in seen:
+            seen.add(domain)
+            is_target = domain == target_domain
+            competitors.append({
+                "name": domain,
+                "url": match.group(0).rstrip("/)"),
+                "rank": None,
+                "is_target": is_target,
+            })
+
+    # 2. Extract numbered list items
+    numbered_items: list[tuple[int, str]] = []
+    for match in _LIST_ITEM_RE.finditer(response_text):
+        num = int(match.group(1))
+        text = match.group(2).strip()
+        numbered_items.append((num, text))
+
+    # For each numbered item, extract the brand/site name and match with URLs
+    for num, item_text in numbered_items:
+        # Check if this item mentions any known URL
+        item_url_match = _URL_RE.search(item_text)
+        if item_url_match:
+            domain = item_url_match.group(1).lower().removeprefix("www.")
+            # Update rank for existing competitor or add new
+            existing = next((c for c in competitors if c["url"] and domain in c["url"].lower()), None)
+            if existing:
+                existing["rank"] = num
+                continue
+
+        # Extract the leading text as a brand name (e.g. "**Cabesto** — ..." or "Cabesto - ...")
+        clean_text = _BRAND_CLEAN_RE.sub("", item_text).strip()
+        # Take first meaningful word(s) as brand name candidate
+        name = clean_text.split("—")[0].split("-")[0].split(":")[0].strip().rstrip(".,;")
+        if not name or len(name) > 50:
+            continue
+
+        name_lower = name.lower()
+        is_target = name_lower in all_brands_lower or any(b in name_lower for b in all_brands_lower)
+
+        if name_lower not in seen:
+            seen.add(name_lower)
+            url_match = _URL_RE.search(item_text)
+            competitors.append({
+                "name": name,
+                "url": url_match.group(0).rstrip("/)") if url_match else None,
+                "rank": num,
+                "is_target": is_target,
+            })
+        else:
+            existing = next((c for c in competitors if c["name"].lower() == name_lower), None)
+            if existing and existing["rank"] is None:
+                existing["rank"] = num
+
+    # Sort: target first, then by rank, then by name
+    competitors.sort(key=lambda c: (not c["is_target"], c["rank"] or 999, c["name"]))
+    return competitors
 
 
 # ---------------------------------------------------------------------------

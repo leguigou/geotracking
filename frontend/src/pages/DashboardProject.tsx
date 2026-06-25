@@ -6,27 +6,9 @@ import PromptMatrix from '../components/PromptMatrix';
 import InspectModal from '../components/InspectModal';
 import { useProject, usePrompts } from '../hooks/useApi';
 import { api, type LatestResultsData, type HistoryEntry, type OpenRouterModel } from '../lib/api';
+import { modelDisplay, providerKey } from '../lib/modelMap';
 import ManagePrompts from '../components/ManagePrompts';
 import ScanHistory from '../components/ScanHistory';
-
-const LLM_DEFS = [
-  { id: 'chatgpt', label: 'ChatGPT', model: 'OpenAI via OpenRouter', letter: 'C', barColor: 'bg-emerald-500', iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-600 dark:text-emerald-400', chartColor: '#3b82f6' },
-  { id: 'claude', label: 'Claude', model: 'Anthropic via OpenRouter', letter: 'C', barColor: 'bg-violet-500', iconBg: 'bg-violet-500/10', iconColor: 'text-violet-600 dark:text-violet-400', chartColor: '#8b5cf6' },
-  { id: 'perplexity', label: 'Perplexity', model: 'Perplexity via OpenRouter', letter: 'P', barColor: 'bg-amber-500', iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-600 dark:text-emerald-400', chartColor: '#10b981' },
-  { id: 'gemini', label: 'Gemini', model: 'Google via OpenRouter', letter: 'G', barColor: 'bg-red-500', iconBg: 'bg-red-500/10', iconColor: 'text-red-600 dark:text-red-400', chartColor: '#f59e0b' },
-  { id: 'grok', label: 'Grok', model: 'xAI via OpenRouter', letter: 'X', barColor: 'bg-sky-500', iconBg: 'bg-sky-500/10', iconColor: 'text-sky-600 dark:text-sky-400', chartColor: '#0ea5e9' },
-  { id: 'deepseek', label: 'DeepSeek', model: 'DeepSeek via OpenRouter', letter: 'D', barColor: 'bg-orange-500', iconBg: 'bg-orange-500/10', iconColor: 'text-orange-600 dark:text-orange-400', chartColor: '#f97316' },
-];
-
-const providerKey = (modelId: string) => {
-  if (modelId.startsWith('openai/')) return 'chatgpt';
-  if (modelId.startsWith('anthropic/')) return 'claude';
-  if (modelId.startsWith('perplexity/')) return 'perplexity';
-  if (modelId.startsWith('google/')) return 'gemini';
-  if (modelId.startsWith('x-ai/')) return 'grok';
-  if (modelId.startsWith('deepseek/')) return 'deepseek';
-  return modelId.split('/')[0];
-};
 
 const apiErrorMessage = (error: unknown) => {
   const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
@@ -82,13 +64,12 @@ export default function DashboardProject() {
     api.getAvailableModels().then((data) => setModelCatalog(data.models)).catch(() => setModelCatalog([]));
   }, []);
 
-  /* Filtrer les LLM_DEFS selon les settings */
+  /* Générer dynamiquement les infos d'affichage des modèles */
   const activeLlmDefs = useMemo(() => {
-    const projectProviders = new Set((project?.enabled_models ?? []).map(providerKey));
-    return LLM_DEFS.filter((llm) =>
-      (projectProviders.size === 0 || projectProviders.has(llm.id)) &&
-      (!enabledModels || enabledModels.includes(llm.id)),
-    );
+    const modelIds = project?.enabled_models ?? [];
+    // Fallback: si le projet n'a pas encore de modèles, utiliser les settings globaux (legacy)
+    const ids = modelIds.length > 0 ? modelIds : (enabledModels ?? []);
+    return ids.map(modelDisplay);
   }, [enabledModels, project?.enabled_models]);
 
   const [latest, setLatest] = useState<LatestResultsData | null>(null);

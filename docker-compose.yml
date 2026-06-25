@@ -24,13 +24,6 @@ services:
       JWT_REFRESH_EXPIRE_DAYS: "30"
       OPENAI_API_KEY: "${OPENROUTER_API_KEY:-}"
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.geotrack-api.entrypoints=websecure"
-      - "traefik.http.routers.geotrack-api.rule=Host(`geotrack.deloffre.fr`) && PathPrefix(`/api`)"
-      - "traefik.http.routers.geotrack-api.tls=true"
-      - "traefik.http.routers.geotrack-api.tls.certResolver=letsencrypt"
-      - "traefik.http.services.geotrack-api.loadbalancer.server.port=8000"
 
   db:
     image: postgres:16-alpine
@@ -55,9 +48,9 @@ services:
 volumes:
   pgdata:
     name: geotrack_pgdata
-    external: ${DOKPLOY_EXTERNAL_RESOURCES:-false}
+    external: true
 
 networks:
   default:
     name: dokploy-network
-    external: ${DOKPLOY_EXTERNAL_RESOURCES:-false}
+    external: true

@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 
 import httpx
 
+from app.services.openrouter import OPENROUTER_SEMAPHORE
 from app.config import settings
 
 
@@ -67,16 +68,17 @@ async def scan_prompt(
             else:
                 request_payload["max_tokens"] = 1200
 
-            response = await client.post(
-                f"{settings.openrouter_base_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                    "HTTP-Referer": settings.cors_origins_list[0] if settings.cors_origins_list else "https://geotrack.ai",
-                    "X-Title": "GEOTrack AI",
-                },
-                json=request_payload,
-            )
+            async with OPENROUTER_SEMAPHORE:
+                response = await client.post(
+                    f"{settings.openrouter_base_url}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                        "HTTP-Referer": settings.cors_origins_list[0] if settings.cors_origins_list else "https://geotrack.ai",
+                        "X-Title": "GEOTrack AI",
+                    },
+                    json=request_payload,
+                )
             response.raise_for_status()
             payload = response.json()
     except Exception as exc:

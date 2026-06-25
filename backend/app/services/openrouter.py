@@ -1,5 +1,6 @@
 """OpenRouter helpers shared by settings endpoints and scan workers."""
 
+import asyncio
 import json
 import time
 from typing import Any
@@ -20,6 +21,8 @@ PROVIDER_PRESETS: dict[str, tuple[str, tuple[str, ...]]] = {
     "grok": ("x-ai/", ("fast", "grok")),
     "deepseek": ("deepseek/", ("flash", "chat")),
 }
+
+OPENROUTER_SEMAPHORE = asyncio.Semaphore(5)
 
 _catalog_cache: tuple[float, list[dict[str, Any]]] | None = None
 CATALOG_TTL_SECONDS = 600

@@ -1,11 +1,12 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import TrendChart from '../components/TrendChart';
 import PromptMatrix from '../components/PromptMatrix';
 import InspectModal from '../components/InspectModal';
+import ScanProgressGrid from '../components/ScanProgressGrid';
 import { useProject, usePrompts } from '../hooks/useApi';
-import { api, type LatestResultsData, type HistoryEntry, type OpenRouterModel } from '../lib/api';
+import { api, type LatestResultsData, type HistoryEntry, type OpenRouterModel, type ScanStatusData } from '../lib/api';
 import { modelDisplay } from '../lib/modelMap';
 import ManagePrompts from '../components/ManagePrompts';
 import ScanHistory from '../components/ScanHistory';
@@ -101,6 +102,62 @@ export default function DashboardProject() {
   const [scanning, setScanning] = useState(false);
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [scanStatus, setScanStatus] = useState<ScanStatusData | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  /* ── Scan status polling (progress grid) ────────────────────── */
+  const startScanStatusPolling = useCallback(() => {
+    if (!id) return;
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    pollingRef.current = setInterval(async () => {
+      try {
+        const res = await api.getScanStatus(id);
+        setScanStatus(res);
+        if (res.batch && ['completed', 'failed', 'cancelled'].includes(res.batch.status)) {
+          if (pollingRef.current) {
+            clearInterval(pollingRef.current);
+            pollingRef.current = null;
+          }
+          setScanning(false);
+          setActiveBatchId(null);
+          if (res.batch.status !== 'completed') {
+            setScanError(`${res.batch.failed_jobs} requête(s) OpenRouter ont échoué.`);
+          }
+        }
+      } catch {
+        // still waiting
+      }
+    }, 3000);
+  }, [id]);
+
+  const stopScanStatusPolling = useCallback(() => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  }, []);
+
+  /* Resume polling on mount if a scan is in progress */
+  useEffect(() => {
+    if (!id) return;
+    (async () => {
+      try {
+        const status = await api.getScanStatus(id);
+        if (status.batch && (status.batch.status === 'queued' || status.batch.status === 'running')) {
+          setScanStatus(status);
+          setScanning(true);
+          setActiveBatchId(status.batch.id);
+          startScanStatusPolling();
+        }
+      } catch { /* ignore */ }
+    })();
+    return () => stopScanStatusPolling();
+  }, [id, startScanStatusPolling, stopScanStatusPolling]);
+
+  /* Cleanup polling on unmount */
+  useEffect(() => {
+    return () => stopScanStatusPolling();
+  }, [stopScanStatusPolling]);
 
   /* Poll every 5s after scan until results arrive */
   useEffect(() => {
@@ -371,6 +428,7 @@ export default function DashboardProject() {
               }`}
               onClick={async () => {
                 if (scanning && id) {
+                  stopScanStatusPolling();
                   try {
                     await api.cancelScan(id);
                     setScanError(null);
@@ -378,14 +436,17 @@ export default function DashboardProject() {
                     setScanError(apiErrorMessage(error));
                   }
                   setScanning(false);
+                  setScanStatus(null);
                   return;
                 }
                 if (!id) return;
                 setScanning(true);
                 setScanError(null);
+                setScanStatus(null);
                 try {
                   const response = await api.scanProject(id, scanModel || undefined);
                   setActiveBatchId(response.batch_id);
+                  startScanStatusPolling();
                 } catch (error) {
                   setScanError(apiErrorMessage(error));
                   setScanning(false);
@@ -424,6 +485,15 @@ export default function DashboardProject() {
           )}
           {scanError && <p className="text-sm text-amber-800 dark:text-amber-200">{scanError}</p>}
         </div>
+      )}
+
+      {/* Scan Progress Grid */}
+      {scanStatus && scanStatus.batch && (
+        <ScanProgressGrid
+          matrix={scanStatus.matrix}
+          models={scanStatus.models}
+          batchStatus={scanStatus.batch.status}
+        />
       )}
 
       {/* SOV Cards */}

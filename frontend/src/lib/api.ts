@@ -231,6 +231,43 @@ export const getLatestResults = (projectId: string | number) =>
 export const getScanHistory = (projectId: string | number) =>
   client.get<HistoryEntry[]>(`/projects/${projectId}/history`).then((r) => r.data)
 
+export const getScanStatus = (projectId: string | number) =>
+  client.get<ScanStatusData>(`/projects/${projectId}/scan/status`).then((r) => r.data)
+
+export interface ScanStatusData {
+  batch: {
+    id: string
+    status: string
+    total_jobs: number
+    completed_jobs: number
+    failed_jobs: number
+    created_at: string
+    completed_at: string | null
+  } | null
+  matrix: Array<{
+    prompt_id: string
+    prompt_text: string
+    theme: string | null
+    models: Record<string, {
+      status: string
+      has_url: boolean
+      has_brand: boolean
+      rank: number | null
+      error: string | null
+      latency_ms: number | null
+      response_snippet: string | null
+      competitors: Array<{
+        name: string
+        url: string | null
+        rank: number | null
+        is_target: boolean
+      }>
+    }>
+  }>
+  prompts: Array<{ id: string; text: string; theme: string | null }>
+  models: string[]
+}
+
 // ── Settings ────────────────────────────────────────────────────────
 export const getSettings = () =>
   client.get<Record<string, unknown>>("/settings").then((r) => r.data)
@@ -306,6 +343,7 @@ export const api = {
   getResults,
   getLatestResults,
   getScanHistory,
+  getScanStatus,
   getSettings,
   updateSettings,
   testOpenRouterKey,

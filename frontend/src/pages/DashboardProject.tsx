@@ -6,6 +6,7 @@ import PromptMatrix from '../components/PromptMatrix';
 import InspectModal from '../components/InspectModal';
 import ScanProgressGrid from '../components/ScanProgressGrid';
 import HelpTooltip from '../components/HelpTooltip';
+import ModelPicker from '../components/ModelPicker';
 import { useProject, usePrompts } from '../hooks/useApi';
 import { api, type LatestResultsData, type HistoryEntry, type OpenRouterModel, type ScanStatusData } from '../lib/api';
 import { modelDisplay } from '../lib/modelMap';
@@ -411,7 +412,7 @@ export default function DashboardProject() {
                     className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors text-left"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                    Historique des scans
+                    Voir les logs
                   </button>
                   <div className="border-t border-slate-200 dark:border-slate-700 my-1" />
                   <button
@@ -429,22 +430,10 @@ export default function DashboardProject() {
           {Object.keys(overall).length > 0 && (
             <button
               className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-all duration-200 bg-slate-100 dark:bg-slate-800 text-xs"
-              onClick={() => {
-                const firstPrompt = promptRows[0];
-                const firstLlm = activeLlmDefs[0];
-                if (firstPrompt) {
-                  setInspectProps({
-                    llm: firstLlm.label,
-                    prompt: firstPrompt.prompt,
-                    responseSnippet: null,
-                    mentioned: firstPrompt[firstLlm.id] === 'mentioned',
-                    position: null,
-                  });
-                }
-              }}
+              onClick={() => setShowScanHistory(true)}
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-              <span>{t('project.inspect')}</span>
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
+              <span>Voir les logs</span>
             </button>
           )}
           <div className="flex items-center gap-2">
@@ -817,8 +806,8 @@ export default function DashboardProject() {
 
       {/* Edit modal */}
       {editing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg mx-4 p-6 space-y-5">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 px-3 py-6 sm:py-10">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-4xl mx-4 p-6 space-y-5">
             <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Modifier le projet</h3>
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Nom du projet</label>
@@ -830,16 +819,7 @@ export default function DashboardProject() {
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Modèles OpenRouter</label>
-              <select
-                multiple
-                size={7}
-                className="input-field w-full text-xs"
-                value={editModels}
-                onChange={(event) => setEditModels(Array.from(event.target.selectedOptions, (option) => option.value))}
-              >
-                {modelCatalog.map((model) => <option key={model.id} value={model.id}>{model.name} — {model.id}</option>)}
-              </select>
-              <p className="text-xs text-slate-400 mt-1">Ctrl/Cmd + clic pour sélectionner plusieurs modèles.</p>
+              <ModelPicker models={modelCatalog} selectedIds={editModels} onChange={setEditModels} />
             </div>
             <div className="flex justify-end gap-3 pt-2">
               <button onClick={() => setEditing(false)} className="btn-secondary">Annuler</button>

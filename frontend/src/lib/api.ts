@@ -168,6 +168,8 @@ export interface HistoryEntry {
   batch_id: string
   scan_date: string
   status?: string
+  total_jobs?: number
+  completed_jobs?: number
   failed_jobs?: number
   provider_stats?: Record<string, ProviderStats>
   chatgpt?: number
@@ -274,7 +276,7 @@ export const getResults = (projectId: string | number, limit = 500, offset = 0) 
 export const getLatestResults = (projectId: string | number) =>
   client.get<LatestResultsData>(`/projects/${projectId}/results/latest`).then((r) => r.data)
 
-export const getScanHistory = (projectId: string | number, limit = 100) =>
+export const getScanHistory = (projectId: string | number, limit = 1000) =>
   client.get<HistoryEntry[]>(`/projects/${projectId}/history`, { params: { limit } }).then((r) => r.data)
 
 export const getScanStatus = (projectId: string | number, batchId?: string) => {

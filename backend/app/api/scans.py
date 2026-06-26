@@ -474,13 +474,13 @@ async def get_scan_history(
     project_id: str,
     org_id=Depends(get_current_organization),
     db: AsyncSession = Depends(get_db),
-    limit: int = Query(30, ge=1, le=100),
+    limit: int = Query(100, ge=1, le=1000),
 ):
     uid = _resolve_uuid(project_id)
     await _owned_project(db, uid, org_id)
     batch_result = await db.execute(
         select(ScanBatch)
-        .where(ScanBatch.project_id == uid, ScanBatch.status.in_(("completed", "cancelled")))
+        .where(ScanBatch.project_id == uid, ScanBatch.status.in_(("completed", "failed", "cancelled")))
         .order_by(desc(ScanBatch.created_at))
         .limit(limit)
     )
@@ -501,6 +501,8 @@ async def get_scan_history(
                 "batch_id": str(batch.id),
                 "scan_date": (batch.completed_at or batch.created_at).isoformat(),
                 "status": batch.status,
+                "total_jobs": batch.total_jobs,
+                "completed_jobs": batch.completed_jobs,
                 "failed_jobs": batch.failed_jobs,
                 "provider_stats": provider_stats,
                 **overall,

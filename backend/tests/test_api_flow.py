@@ -155,7 +155,10 @@ def test_latest_batch_and_history_have_dashboard_contract(client, account, proje
 
     history = client.get(f"/api/projects/{project['id']}/history", headers=account["headers"])
     assert history.status_code == 200
-    assert history.json()[-1]["openai/gpt-5.4-mini"] == 100.0
+    history_entry = history.json()[-1]
+    assert history_entry["openai/gpt-5.4-mini"] == 100.0
+    assert history_entry["total_jobs"] == 1
+    assert history_entry["completed_jobs"] == 1
 
     overview = client.get("/api/dashboard/overview", headers=account["headers"])
     assert overview.status_code == 200, overview.text

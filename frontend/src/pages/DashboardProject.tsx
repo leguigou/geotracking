@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import TrendChart from '../components/TrendChart';
+import ScanVolumeChart from '../components/ScanVolumeChart';
 import PromptMatrix from '../components/PromptMatrix';
 import InspectModal from '../components/InspectModal';
 import ScanProgressGrid from '../components/ScanProgressGrid';
@@ -324,6 +325,50 @@ export default function DashboardProject() {
 
     return Array.from(byDay.values()).sort((a, b) => a.date.getTime() - b.date.getTime());
   }, [filteredHistory]);
+
+  const volumePoints = useMemo(() => {
+    const byDay = new Map<string, {
+      date: Date;
+      campaigns: number;
+      planned: number;
+      completed: number;
+      failures: number;
+    }>();
+    for (const entry of filteredHistory) {
+      const date = new Date(entry.scan_date);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      const point = byDay.get(key) ?? {
+        date,
+        campaigns: 0,
+        planned: 0,
+        completed: 0,
+        failures: 0,
+      };
+      const observedJobs = Object.values(entry.provider_stats ?? {}).reduce(
+        (total, stats) => total + (stats.total ?? 0),
+        0,
+      );
+      point.campaigns += 1;
+      point.planned += entry.total_jobs ?? observedJobs;
+      point.completed += entry.completed_jobs ?? observedJobs;
+      point.failures += entry.failed_jobs ?? 0;
+      point.date = date;
+      byDay.set(key, point);
+    }
+    return Array.from(byDay.values()).sort((a, b) => a.date.getTime() - b.date.getTime());
+  }, [filteredHistory]);
+
+  const volumeSummary = useMemo(() => (
+    volumePoints.reduce(
+      (summary, point) => ({
+        campaigns: summary.campaigns + point.campaigns,
+        planned: summary.planned + point.planned,
+        completed: summary.completed + point.completed,
+        failures: summary.failures + point.failures,
+      }),
+      { campaigns: 0, planned: 0, completed: 0, failures: 0 },
+    )
+  ), [volumePoints]);
 
   const chartLabels = useMemo(() => {
     return trendPoints.map((point) => (
@@ -874,6 +919,36 @@ export default function DashboardProject() {
         <TrendChart chartId="trendProject" labels={chartLabels} datasets={chartDatasets} />
       </div>
 
+      {/* Scan volume */}
+      <div className="glass-card rounded-xl p-5 mb-8">
+        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex items-start gap-2">
+            <div>
+              <h2 className="text-base font-semibold text-slate-900 dark:text-white">Volume des scans</h2>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                Une campagne correspond à un lancement. Elle génère plusieurs requêtes : prompts × modèles sélectionnés.
+              </p>
+            </div>
+            <HelpTooltip title="Campagnes et requêtes">
+              Exemple : 6 prompts envoyés à 2 LLMs représentent 1 campagne et 12 requêtes OpenRouter. Ce graphique permet de vérifier la quantité réelle de données derrière le SOV.
+            </HelpTooltip>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <VolumeMetric label="Campagnes" value={volumeSummary.campaigns} />
+            <VolumeMetric label="Requêtes prévues" value={volumeSummary.planned} />
+            <VolumeMetric label="Exécutées" value={volumeSummary.completed} />
+            <VolumeMetric label="Erreurs" value={volumeSummary.failures} warning={volumeSummary.failures > 0} />
+          </div>
+        </div>
+        <ScanVolumeChart
+          labels={volumePoints.map((point) => point.date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }))}
+          campaigns={volumePoints.map((point) => point.campaigns)}
+          planned={volumePoints.map((point) => point.planned)}
+          completed={volumePoints.map((point) => point.completed)}
+          failures={volumePoints.map((point) => point.failures)}
+        />
+      </div>
+
       {/* Prompt Matrix */}
       <div className="glass-card rounded-xl p-5">
         <div className="flex items-center justify-between mb-4">
@@ -1032,6 +1107,19 @@ export default function DashboardProject() {
           {...inspectProps}
         />
       )}
+    </div>
+  );
+}
+
+function VolumeMetric({ label, value, warning = false }: { label: string; value: number; warning?: boolean }) {
+  return (
+    <div className={`min-w-24 rounded-lg px-3 py-2 ${
+      warning
+        ? 'bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-200'
+        : 'bg-slate-50 text-slate-700 dark:bg-slate-800 dark:text-slate-200'
+    }`}>
+      <p className="text-[10px] uppercase tracking-wide opacity-70">{label}</p>
+      <p className="text-lg font-bold">{value.toLocaleString('fr-FR')}</p>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { modelDisplay } from '../lib/modelMap';
-import type { ScanStatusData } from '../lib/api';
+import { api, type ScanStatusData } from '../lib/api';
 
 const formatDate = (value?: string | null) =>
   value ? new Date(value).toLocaleString('fr-FR') : '—';
@@ -41,6 +41,29 @@ export default function ScanProgressGrid({ matrix, models, batchStatus }: ScanPr
     modelId: string;
     data: NonNullable<ScanStatusData['matrix'][number]['models'][string]>;
   } | null>(null);
+  const [analyzingKey, setAnalyzingKey] = useState<string | null>(null);
+  const [analyses, setAnalyses] = useState<Record<string, { text: string; model: string }>>({});
+  const [analysisErrors, setAnalysisErrors] = useState<Record<string, string>>({});
+
+  const analyzeResponse = async (key: string, responseText: string, promptText: string) => {
+    setAnalyzingKey(key);
+    setAnalysisErrors((current) => ({ ...current, [key]: '' }));
+    try {
+      const result = await api.analyzeResponse(responseText, promptText);
+      setAnalyses((current) => ({
+        ...current,
+        [key]: { text: result.analysis, model: result.model },
+      }));
+    } catch (error) {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setAnalysisErrors((current) => ({
+        ...current,
+        [key]: detail || 'Impossible d’analyser cette réponse.',
+      }));
+    } finally {
+      setAnalyzingKey(null);
+    }
+  };
 
   /* Compute progress */
   const totalJobs = matrix.length * models.length;
@@ -270,20 +293,62 @@ export default function ScanProgressGrid({ matrix, models, batchStatus }: ScanPr
                             <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                               Réponse complète du modèle
                             </p>
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                navigator.clipboard.writeText(cell.response_snippet || '');
-                              }}
-                              className="text-xs text-blue-600 hover:underline dark:text-blue-400"
-                            >
-                              Copier
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  navigator.clipboard.writeText(cell.response_snippet || '');
+                                }}
+                                className="text-xs text-blue-600 hover:underline dark:text-blue-400"
+                              >
+                                Copier
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  analyzeResponse(expandedId, cell.response_snippet || '', row.prompt_text);
+                                }}
+                                disabled={analyzingKey === expandedId}
+                                className="rounded-lg bg-violet-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-violet-500 disabled:cursor-wait disabled:opacity-60"
+                              >
+                                {analyzingKey === expandedId
+                                  ? 'Analyse...'
+                                  : analyses[expandedId]
+                                    ? 'Relancer'
+                                    : 'Analyser avec l’IA'}
+                              </button>
+                            </div>
                           </div>
                           <pre className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-3 text-xs leading-relaxed text-slate-700 dark:text-slate-300 font-mono whitespace-pre-wrap max-h-60 overflow-y-auto border border-slate-200 dark:border-slate-700/50">
                             {cell.response_snippet}
                           </pre>
+                        </div>
+                      )}
+
+                      {(analyses[expandedId] || analysisErrors[expandedId]) && (
+                        <div
+                          onClick={(event) => event.stopPropagation()}
+                          className={`rounded-xl border p-4 ${
+                            analysisErrors[expandedId]
+                              ? 'border-amber-200 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10'
+                              : 'border-violet-200 bg-violet-50 dark:border-violet-500/30 dark:bg-violet-500/10'
+                          }`}
+                        >
+                          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300">
+                              Analyse de l’assistant IA
+                            </p>
+                            {analyses[expandedId] && (
+                              <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400">
+                                {analyses[expandedId].model}
+                              </span>
+                            )}
+                          </div>
+                          <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-200">
+                            {analysisErrors[expandedId] || analyses[expandedId]?.text}
+                          </div>
                         </div>
                       )}
 

@@ -141,6 +141,7 @@ export interface LatestResultsData {
   batch: {
     id: string
     status: "queued" | "running" | "completed" | "failed" | "cancelled"
+    requested_model?: string | null
     total_jobs: number
     completed_jobs: number
     failed_jobs: number
@@ -257,6 +258,7 @@ export const scanProject = (projectId: string | number, model?: string) => {
   return client.post<{ status: string; batch_id: string; enqueued: number }>(
     `/projects/${projectId}/scan`,
     { model: model || null },
+    { params: model ? { model } : undefined },
   ).then((r) => r.data)
 };
 
@@ -272,8 +274,8 @@ export const getResults = (projectId: string | number, limit = 500, offset = 0) 
 export const getLatestResults = (projectId: string | number) =>
   client.get<LatestResultsData>(`/projects/${projectId}/results/latest`).then((r) => r.data)
 
-export const getScanHistory = (projectId: string | number) =>
-  client.get<HistoryEntry[]>(`/projects/${projectId}/history`).then((r) => r.data)
+export const getScanHistory = (projectId: string | number, limit = 100) =>
+  client.get<HistoryEntry[]>(`/projects/${projectId}/history`, { params: { limit } }).then((r) => r.data)
 
 export const getScanStatus = (projectId: string | number, batchId?: string) => {
   const params = batchId ? `?batch_id=${batchId}` : ''
@@ -284,6 +286,7 @@ export interface ScanStatusData {
   batch: {
     id: string
     status: string
+    requested_model?: string | null
     total_jobs: number
     completed_jobs: number
     failed_jobs: number
@@ -325,13 +328,14 @@ export const updateSettings = (settings: Record<string, unknown>) =>
   client.put<Record<string, unknown>>("/settings", settings).then((r) => r.data)
 
 export const testOpenRouterKey = (apiKey?: string) =>
-  client.post<{ status: string; message: string; models?: string[] }>("/settings/test-openrouter", { api_key: apiKey || undefined }).then((r) => r.data)
+  client.post<{ status: string; message: string; models?: OpenRouterModel[] }>("/settings/test-openrouter", { api_key: apiKey || undefined }).then((r) => r.data)
 
 export const getAvailableModels = () =>
   client.get<{
     models: OpenRouterModel[]
     recommended: Record<string, OpenRouterModel>
     has_key: boolean
+    assistant_model?: string | null
     message: string
   }>("/settings/available-models").then((r) => r.data)
 
@@ -382,8 +386,14 @@ export interface DashboardOverview {
 export const getDashboardOverview = () =>
   client.get<DashboardOverview>("/dashboard/overview").then((response) => response.data)
 
-export const rewritePrompt = (text: string, model: string) =>
-  client.post<{ rewritten: string }>("/settings/rewrite-prompt", { text, model }).then((r) => r.data)
+export const rewritePrompt = (text: string) =>
+  client.post<{ rewritten: string; model: string }>("/settings/rewrite-prompt", { text }).then((r) => r.data)
+
+export const analyzeResponse = (responseText: string, promptText = "") =>
+  client.post<{ analysis: string; model: string }>("/settings/analyze-response", {
+    response_text: responseText,
+    prompt_text: promptText,
+  }).then((r) => r.data)
 
 export const getAuditLogs = () =>
   client.get<Record<string, unknown>[]>("/audit-logs").then((r) => r.data)
@@ -414,6 +424,7 @@ export const api = {
   testOpenRouterKey,
   getAvailableModels,
   rewritePrompt,
+  analyzeResponse,
   getAuditLogs,
   getDashboardOverview,
 }

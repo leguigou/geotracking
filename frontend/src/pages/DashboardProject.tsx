@@ -111,12 +111,12 @@ export default function DashboardProject() {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   /* ── Scan status polling (progress grid) ────────────────────── */
-  const startScanStatusPolling = useCallback(() => {
+  const startScanStatusPolling = useCallback((batchId?: string) => {
     if (!id) return;
     if (pollingRef.current) clearInterval(pollingRef.current);
     pollingRef.current = setInterval(async () => {
       try {
-        const res = await api.getScanStatus(id);
+        const res = await api.getScanStatus(id, batchId);
         setScanStatus(res);
         if (res.batch && ['completed', 'failed', 'cancelled'].includes(res.batch.status)) {
           if (pollingRef.current) {
@@ -152,7 +152,7 @@ export default function DashboardProject() {
           setScanStatus(status);
           setScanning(true);
           setActiveBatchId(status.batch.id);
-          startScanStatusPolling();
+          startScanStatusPolling(status.batch.id);
         }
       } catch { /* ignore */ }
     })();
@@ -267,24 +267,38 @@ export default function DashboardProject() {
   }, [activeLlmDefs, latest?.prompts, promptRows]);
 
   /* ── Trend chart ────────────────────────────────────────── */
-  const chartLabels = useMemo(() => {
+  const filteredHistory = useMemo(() => {
     if (!history?.length) return [];
-    return history.map((h) => {
-      const d = new Date(h.scan_date);
-      return `${d.getDate()}/${d.getMonth() + 1}`;
+    const days = period === 'last7d' ? 7 : period === 'last90d' ? 90 : 30;
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    return history.filter((entry) => {
+      const timestamp = new Date(entry.scan_date).getTime();
+      return Number.isFinite(timestamp) && timestamp >= cutoff;
     });
-  }, [history]);
+  }, [history, period]);
+
+  const chartLabels = useMemo(() => {
+    return filteredHistory.map((h) => {
+      const d = new Date(h.scan_date);
+      return d.toLocaleString('fr-FR', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    });
+  }, [filteredHistory]);
 
   const chartDatasets = useMemo(() => {
-    if (!history?.length) return [];
+    if (!filteredHistory.length) return [];
     return activeLlmDefs.map((llm) => ({
       label: llm.label,
-      data: history.map((h) => h.provider_stats?.[llm.id]?.sov ?? null),
-      pointMeta: history.map((h) => h.provider_stats?.[llm.id] ?? null),
+      data: filteredHistory.map((h) => h.provider_stats?.[llm.id]?.sov ?? null),
+      pointMeta: filteredHistory.map((h) => h.provider_stats?.[llm.id] ?? null),
       borderColor: llm.chartColor,
-      borderDash: history.every((h) => !h.provider_stats?.[llm.id] || h.provider_stats[llm.id].sov === 0) ? [4, 3] as number[] : undefined,
+      borderDash: filteredHistory.every((h) => !h.provider_stats?.[llm.id] || h.provider_stats[llm.id].sov === 0) ? [4, 3] as number[] : undefined,
     }));
-  }, [history, activeLlmDefs]);
+  }, [filteredHistory, activeLlmDefs]);
 
   /* ── Themes ──────────────────────────────────────────────── */
   const themes = useMemo(() => {
@@ -324,7 +338,7 @@ export default function DashboardProject() {
       </div>
 
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between mb-6">
         <div className="flex min-w-0 items-center gap-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{project?.name ?? 'Projet'}</h1>
@@ -345,7 +359,7 @@ export default function DashboardProject() {
             </p>
           </div>
         </div>
-        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+        <div className="flex min-w-0 w-full flex-wrap items-center gap-2 xl:w-auto xl:justify-end">
           {/* Action menu */}
           <div className="relative">
             <button
@@ -436,10 +450,10 @@ export default function DashboardProject() {
               <span>Voir les logs</span>
             </button>
           )}
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 w-full max-w-full items-center gap-2 sm:w-96">
             {/* Sélecteur de modèle pour le scan */}
             <select
-                className="input-field min-w-0 flex-1 text-xs py-2 sm:w-auto sm:flex-none"
+              className="input-field min-w-0 flex-1 text-xs py-2"
               value={scanModel}
               onChange={(e) => setScanModel(e.target.value)}
               disabled={scanning}
@@ -452,7 +466,7 @@ export default function DashboardProject() {
 
             {/* Bouton Scan / Annuler */}
             <button
-              className={`inline-flex flex-1 items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 active:scale-[.97] text-xs sm:flex-none ${
+              className={`inline-flex shrink-0 items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 active:scale-[.97] text-xs ${
                 scanning
                   ? 'bg-red-600 text-white hover:bg-red-500 shadow-lg shadow-red-500/20'
                   : 'bg-gradient-to-r from-blue-600 to-violet-600 text-white hover:from-blue-500 hover:to-violet-500 shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30'
@@ -477,7 +491,7 @@ export default function DashboardProject() {
                 try {
                   const response = await api.scanProject(id, scanModel || undefined);
                   setActiveBatchId(response.batch_id);
-                  startScanStatusPolling();
+                  startScanStatusPolling(response.batch_id);
                 } catch (error) {
                   setScanError(apiErrorMessage(error));
                   setScanning(false);
@@ -500,16 +514,26 @@ export default function DashboardProject() {
 
       {(scanning || scanError) && (
         <div className={`mb-6 rounded-xl border p-4 ${scanError ? 'border-amber-300 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10' : 'border-blue-200 bg-blue-50 dark:border-blue-500/30 dark:bg-blue-500/10'}`}>
-          {scanning && latest?.batch && (!activeBatchId || latest.batch.id === activeBatchId) && (
+          {scanning && (
             <>
               <div className="flex justify-between text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">
-                <span>Scan OpenRouter en cours</span>
-                <span>{latest.batch.completed_jobs}/{latest.batch.total_jobs}</span>
+                <span>
+                  {scanStatus?.batch?.requested_model
+                    ? `Scan ciblé : ${scanStatus.batch.requested_model.split('/').pop()}`
+                    : scanModel
+                      ? `Scan ciblé : ${scanModel.split('/').pop()}`
+                      : 'Scan de tous les LLMs en cours'}
+                </span>
+                {scanStatus?.batch && <span>{scanStatus.batch.completed_jobs}/{scanStatus.batch.total_jobs}</span>}
               </div>
               <div className="h-2 rounded-full bg-blue-100 dark:bg-slate-700 overflow-hidden">
                 <div
                   className="h-full bg-blue-600 transition-all"
-                  style={{ width: `${latest.batch.total_jobs ? (latest.batch.completed_jobs / latest.batch.total_jobs) * 100 : 0}%` }}
+                  style={{
+                    width: `${scanStatus?.batch?.total_jobs
+                      ? (scanStatus.batch.completed_jobs / scanStatus.batch.total_jobs) * 100
+                      : 2}%`,
+                  }}
                 />
               </div>
             </>
@@ -740,11 +764,16 @@ export default function DashboardProject() {
               La courbe compare les scans terminés. Un point à 0% signifie que des réponses ont bien été analysées mais que la marque n'est pas sortie. Une absence de point signifie qu'il n'y avait pas de donnée.
             </HelpTooltip>
           </div>
-          <select value={period} onChange={(e) => setPeriod(e.target.value)} className="text-xs bg-transparent border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-slate-600 dark:text-slate-400 outline-none">
-            <option value="last7d">{t('project.last7d')}</option>
-            <option value="last30d">{t('project.last30d')}</option>
-            <option value="last90d">{t('project.last90d')}</option>
-          </select>
+          <div className="flex items-center gap-2">
+            <span className="hidden text-xs text-slate-400 sm:inline">
+              {filteredHistory.length} scan{filteredHistory.length > 1 ? 's' : ''}
+            </span>
+            <select value={period} onChange={(e) => setPeriod(e.target.value)} className="text-xs bg-transparent border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-slate-600 dark:text-slate-400 outline-none">
+              <option value="last7d">{t('project.last7d')}</option>
+              <option value="last30d">{t('project.last30d')}</option>
+              <option value="last90d">{t('project.last90d')}</option>
+            </select>
+          </div>
         </div>
         <TrendChart chartId="trendProject" labels={chartLabels} datasets={chartDatasets} />
       </div>

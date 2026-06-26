@@ -59,6 +59,56 @@ def test_scan_accepts_model_in_json_body(client, account, project, monkeypatch):
     assert response.status_code == 202, response.text
     assert captured["model"] == "openai/gpt-5.4-mini"
 
+    query_response = client.post(
+        f"/api/projects/{project['id']}/scan?model=anthropic%2Fclaude-haiku-4.5",
+        headers=account["headers"],
+        json={},
+    )
+    assert query_response.status_code == 202, query_response.text
+    assert captured["model"] == "anthropic/claude-haiku-4.5"
+
+
+def test_assistant_model_is_used_for_rewrite_and_response_analysis(client, account, monkeypatch):
+    configured = client.put(
+        "/api/settings",
+        headers=account["headers"],
+        json={
+            "settings": {
+                "openrouter_api_key": "sk-or-test",
+                "assistant_model": "openai/gpt-5.4-mini",
+            }
+        },
+    )
+    assert configured.status_code == 200, configured.text
+
+    calls = []
+
+    async def fake_call(api_key, model, system_prompt, user_prompt, max_tokens):
+        calls.append({"api_key": api_key, "model": model, "user_prompt": user_prompt})
+        return "Analyse ou réécriture générée"
+
+    monkeypatch.setattr("app.api.settings._call_assistant", fake_call)
+
+    rewrite = client.post(
+        "/api/settings/rewrite-prompt",
+        headers=account["headers"],
+        json={"text": "robot piscine aubagne"},
+    )
+    assert rewrite.status_code == 200, rewrite.text
+    assert rewrite.json()["model"] == "openai/gpt-5.4-mini"
+
+    analysis = client.post(
+        "/api/settings/analyze-response",
+        headers=account["headers"],
+        json={"prompt_text": "Quel robot choisir ?", "response_text": "Leroy Merlin est cité."},
+    )
+    assert analysis.status_code == 200, analysis.text
+    assert analysis.json()["model"] == "openai/gpt-5.4-mini"
+    assert [call["model"] for call in calls] == [
+        "openai/gpt-5.4-mini",
+        "openai/gpt-5.4-mini",
+    ]
+
 
 def test_latest_batch_and_history_have_dashboard_contract(client, account, project):
     prompt_response = client.post(
@@ -99,13 +149,13 @@ def test_latest_batch_and_history_have_dashboard_contract(client, account, proje
     assert latest.status_code == 200, latest.text
     payload = latest.json()
     assert payload["batch"]["status"] == "completed"
-    assert payload["overall"]["chatgpt"] == 100.0
-    assert payload["prompts"][0]["chatgpt"] is True
+    assert payload["overall"]["openai/gpt-5.4-mini"] == 100.0
+    assert payload["prompts"][0]["openai/gpt-5.4-mini"] is True
     assert payload["prompts"][0]["theme"] == "Piscine"
 
     history = client.get(f"/api/projects/{project['id']}/history", headers=account["headers"])
     assert history.status_code == 200
-    assert history.json()[-1]["chatgpt"] == 100.0
+    assert history.json()[-1]["openai/gpt-5.4-mini"] == 100.0
 
     overview = client.get("/api/dashboard/overview", headers=account["headers"])
     assert overview.status_code == 200, overview.text

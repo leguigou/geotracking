@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import type { PromptData } from '../lib/api';
@@ -18,32 +18,27 @@ export default function ManagePrompts({ projectId, prompts, onClose, onRefresh }
   const [saving, setSaving] = useState(false);
 
   // Réécriture IA
-  const [models, setModels] = useState<{ id: string; name: string; provider: string }[]>([]);
   const [hasKey, setHasKey] = useState(true);
-  const [selectedModel, setSelectedModel] = useState('openai/gpt-4o-mini');
+  const [assistantModel, setAssistantModel] = useState('');
   const [rewriting, setRewriting] = useState(false);
 
-  // Charger les modèles disponibles
-  const loadModels = useCallback(async () => {
-    try {
-      const data = await api.getAvailableModels();
-      setModels(data.models);
-      setHasKey(data.has_key);
-      if (data.models.length > 0 && !data.models.find(m => m.id === selectedModel)) {
-        setSelectedModel(data.models[0].id);
-      }
-    } catch {
-      setModels([]);
-      setHasKey(false);
-    }
-  }, [selectedModel]);
-  useEffect(() => { loadModels(); }, [loadModels]);
+  useEffect(() => {
+    api.getAvailableModels()
+      .then((data) => {
+        setHasKey(data.has_key);
+        setAssistantModel(data.assistant_model ?? '');
+      })
+      .catch(() => {
+        setHasKey(false);
+        setAssistantModel('');
+      });
+  }, []);
 
   const handleRewrite = async () => {
     if (!newText.trim()) return;
     setRewriting(true);
     try {
-      const data = await api.rewritePrompt(newText.trim(), selectedModel);
+      const data = await api.rewritePrompt(newText.trim());
       if (data.rewritten) {
         setNewText(data.rewritten);
       }
@@ -149,20 +144,11 @@ export default function ManagePrompts({ projectId, prompts, onClose, onRefresh }
             </div>
 
             {/* Ligne réécriture IA */}
-            {hasKey && (
-              <div className="flex items-center gap-2">
-                <select
-                  className="input-field text-xs py-1.5"
-                  value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
-                >
-                  {models.length === 0 && <option value="openai/gpt-4o-mini">GPT-4o Mini (défaut)</option>}
-                  {models.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name} ({m.provider})
-                    </option>
-                  ))}
-                </select>
+            {hasKey && assistantModel && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-lg bg-slate-100 px-2.5 py-1.5 font-mono text-xs text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                  Assistant : {assistantModel}
+                </span>
                 <button
                   onClick={handleRewrite}
                   disabled={rewriting || !newText.trim()}
@@ -179,6 +165,12 @@ export default function ManagePrompts({ projectId, prompts, onClose, onRefresh }
                   )}
                   {rewriting ? 'Réécriture...' : 'Réécrire avec l\'IA'}
                 </button>
+              </div>
+            )}
+
+            {hasKey && !assistantModel && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
+                Choisis le modèle assistant IA dans les paramètres pour utiliser la réécriture.
               </div>
             )}
 

@@ -159,7 +159,7 @@ function providerLabel(provider: string): string {
 /* ── Main display function ───────────────────────────────────────── */
 
 export interface ModelDisplayInfo {
-  id: string;          // short semantic key (e.g. "chatgpt")
+  id: string;          // exact model id, or legacy semantic key
   label: string;       // readable name (e.g. "GPT 4o Mini")
   model: string;       // provider subtitle (e.g. "OpenAI via OpenRouter")
   letter: string;      // initial letter (uppercase)
@@ -180,7 +180,8 @@ export interface ModelDisplayInfo {
 export function modelDisplay(modelId: string): ModelDisplayInfo {
   const isFullId = modelId.includes('/');
 
-  const key = isFullId ? providerKey(modelId) : modelId;
+  // Keep full OpenRouter IDs distinct when several models share a provider.
+  const key = modelId;
   const colors = modelColors(modelId);
 
   let label: string;

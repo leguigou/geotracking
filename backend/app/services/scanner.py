@@ -205,7 +205,40 @@ def run_assertions(
 # ---------------------------------------------------------------------------
 _URL_RE = re.compile(r"https?://(?:www\.)?([a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2,})?)(?:/\S*)?")
 _LIST_ITEM_RE = re.compile(r"^\s*(?:(\d+)[.)]\s+)(.+)$", re.MULTILINE)
-_BRAND_CLEAN_RE = re.compile(r"[’'\"«»“”,;:!?().\[\]{} ]+")
+_BULLET_ITEM_RE = re.compile(r"^\s*[-+*]\s+(.+)$")
+_MARKDOWN_RE = re.compile(r"[*_`~]+")
+_GENERIC_COMPETITOR_PREFIXES = (
+    "alternative",
+    "boutique",
+    "catégorie",
+    "fabricant",
+    "enseigne",
+    "magasin",
+    "marque",
+    "option",
+    "plateforme",
+    "revendeur",
+    "site",
+    "spécialiste",
+    "vente en ligne",
+)
+
+
+def _competitor_name(item_text: str) -> str:
+    """Return the leading brand name from a list item, without Markdown."""
+    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", item_text)
+    text = _URL_RE.sub("", text)
+    text = _MARKDOWN_RE.sub("", text).strip()
+    name = re.split(r"\s+(?:—|–|-)\s+|:\s+", text, maxsplit=1)[0]
+    return name.strip(" \t\r\n'\"«»,;:!?().[]{}")
+
+
+def _is_generic_competitor_name(name: str) -> bool:
+    lowered = name.casefold()
+    return any(
+        lowered == prefix or lowered.startswith(f"{prefix} ")
+        for prefix in _GENERIC_COMPETITOR_PREFIXES
+    )
 
 
 def _extract_competitors(
@@ -222,7 +255,7 @@ def _extract_competitors(
       - is_target: True if this IS the target brand/URL being tracked
     """
     target_domain = _normalise_domain(target_url)
-    all_brands_lower = set(b.lower().strip() for b in brand_names if b.strip())
+    all_brands_lower = {b.casefold().strip() for b in brand_names if b.strip()}
 
     seen: set[str] = set()
     competitors: list[dict] = []
@@ -240,33 +273,45 @@ def _extract_competitors(
                 "is_target": is_target,
             })
 
-    # 2. Extract numbered list items
-    numbered_items: list[tuple[int, str]] = []
-    for match in _LIST_ITEM_RE.finditer(response_text):
-        num = int(match.group(1))
-        text = match.group(2).strip()
-        numbered_items.append((num, text))
+    # 2. Extract recommendation items. A numbered line followed by bullets is
+    # a category heading, so only its children are treated as competitors.
+    lines = response_text.splitlines()
+    recommendation_items: list[tuple[int, str]] = []
+    next_rank = 1
+    for index, line in enumerate(lines):
+        numbered_match = _LIST_ITEM_RE.match(line)
+        bullet_match = _BULLET_ITEM_RE.match(line)
+        if numbered_match:
+            has_bullet_children = False
+            for following in lines[index + 1:]:
+                if not following.strip():
+                    continue
+                has_bullet_children = bool(_BULLET_ITEM_RE.match(following))
+                break
+            if not has_bullet_children:
+                item_rank = int(numbered_match.group(1))
+                recommendation_items.append((item_rank, numbered_match.group(2).strip()))
+                next_rank = max(next_rank, item_rank + 1)
+        elif bullet_match:
+            recommendation_items.append((next_rank, bullet_match.group(1).strip()))
+            next_rank += 1
 
-    # For each numbered item, extract the brand/site name and match with URLs
-    for num, item_text in numbered_items:
-        # Check if this item mentions any known URL
+    for rank, item_text in recommendation_items:
+        name = _competitor_name(item_text)
+        if not name or len(name) > 60 or _is_generic_competitor_name(name):
+            continue
+
         item_url_match = _URL_RE.search(item_text)
         if item_url_match:
             domain = item_url_match.group(1).lower().removeprefix("www.")
-            # Update rank for existing competitor or add new
             existing = next((c for c in competitors if c["url"] and domain in c["url"].lower()), None)
             if existing:
-                existing["rank"] = num
+                existing["name"] = name
+                existing["rank"] = rank
+                seen.add(name.casefold())
                 continue
 
-        # Extract the leading text as a brand name (e.g. "**Cabesto** — ..." or "Cabesto - ...")
-        clean_text = _BRAND_CLEAN_RE.sub("", item_text).strip()
-        # Take first meaningful word(s) as brand name candidate
-        name = clean_text.split("—")[0].split("-")[0].split(":")[0].strip().rstrip(".,;")
-        if not name or len(name) > 50:
-            continue
-
-        name_lower = name.lower()
+        name_lower = name.casefold()
         is_target = name_lower in all_brands_lower or any(b in name_lower for b in all_brands_lower)
 
         if name_lower not in seen:
@@ -275,13 +320,13 @@ def _extract_competitors(
             competitors.append({
                 "name": name,
                 "url": url_match.group(0).rstrip("/)") if url_match else None,
-                "rank": num,
+                "rank": rank,
                 "is_target": is_target,
             })
         else:
-            existing = next((c for c in competitors if c["name"].lower() == name_lower), None)
+            existing = next((c for c in competitors if c["name"].casefold() == name_lower), None)
             if existing and existing["rank"] is None:
-                existing["rank"] = num
+                existing["rank"] = rank
 
     # Sort: target first, then by rank, then by name
     competitors.sort(key=lambda c: (not c["is_target"], c["rank"] or 999, c["name"]))

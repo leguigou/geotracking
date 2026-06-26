@@ -1,18 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import api from '../lib/api';
+import type { OpenRouterModel } from '../lib/api';
 import { useAuth } from '../hooks/useAuth';
+import ModelPicker from '../components/ModelPicker';
 
 type SettingsTab = 'general' | 'members' | 'credits' | 'account';
-
-const modelsList = [
-  { id: 'chatgpt', label: 'ChatGPT' },
-  { id: 'claude', label: 'Claude' },
-  { id: 'gemini', label: 'Gemini' },
-  { id: 'perplexity', label: 'Perplexity' },
-  { id: 'grok', label: 'Grok' },
-  { id: 'deepseek', label: 'DeepSeek' },
-];
 
 export default function SettingsPage() {
   const { t, i18n } = useTranslation();
@@ -24,7 +17,7 @@ export default function SettingsPage() {
 
   // Settings form state
   const [apiKey, setApiKey] = useState('');
-  const [modelsEnabled, setModelsEnabled] = useState<string[]>([]);
+  const [assistantModel, setAssistantModel] = useState('');
   const [temperature, setTemperature] = useState(0.7);
   const [frequency, setFrequency] = useState('weekly');
   const [notifications, setNotifications] = useState(true);
@@ -35,25 +28,23 @@ export default function SettingsPage() {
   const [testMessage, setTestMessage] = useState('');
 
   // Modèles disponibles (depuis OpenRouter)
-  const [availableProviders, setAvailableProviders] = useState<string[]>([]);
+  const [availableModels, setAvailableModels] = useState<OpenRouterModel[]>([]);
+  const [hasConfiguredKey, setHasConfiguredKey] = useState(false);
   const [checkingModels, setCheckingModels] = useState(true);
 
   useEffect(() => {
     (async () => {
       try {
         const data = await api.getAvailableModels();
-        setAvailableProviders(Object.keys(data.recommended || {}));
+        setAvailableModels(data.models);
+        setHasConfiguredKey(data.has_key);
+        if (data.assistant_model) setAssistantModel(data.assistant_model);
         setCheckingModels(false);
       } catch {
         setCheckingModels(false);
       }
     })();
   }, []);
-
-  const isModelAvailable = (id: string) => {
-    // Vérifie si le modèle est disponible dans la liste OpenRouter
-    return availableProviders.includes(id);
-  };
 
   // Profile form state
   const [fullName, setFullName] = useState('');
@@ -92,6 +83,15 @@ export default function SettingsPage() {
       const result = await api.testOpenRouterKey(apiKey);
       setTestStatus(result.status as 'ok' | 'error');
       setTestMessage(result.message);
+      if (result.status === 'ok') {
+        setHasConfiguredKey(true);
+        if (result.models?.length) {
+          setAvailableModels(result.models);
+          if (!assistantModel) {
+            setAssistantModel(result.models.find((model) => model.id === 'openai/gpt-4o-mini')?.id ?? result.models[0].id);
+          }
+        }
+      }
     } catch {
       setTestStatus('error');
       setTestMessage('Erreur réseau ou clé non configurée');
@@ -108,13 +108,7 @@ export default function SettingsPage() {
         setApiKey((settings.openrouter_api_key as string) || '');
         setFullName(user?.full_name || '');
         setProfileEmail(user?.email || '');
-        setModelsEnabled(
-          typeof settings.models_enabled === 'string'
-            ? (JSON.parse(settings.models_enabled as string) as string[])
-            : Array.isArray(settings.models_enabled)
-              ? (settings.models_enabled as string[])
-              : ['chatgpt', 'claude']
-        );
+        setAssistantModel((settings.assistant_model as string) || '');
         setTemperature(
           settings.temperature != null ? Number(settings.temperature) : 0.7
         );
@@ -134,24 +128,22 @@ export default function SettingsPage() {
     return () => { cancelled = true; };
   }, [user?.email, user?.full_name]);
 
-  const toggleModel = (id: string) => {
-    setModelsEnabled((prev) =>
-      prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]
-    );
-  };
-
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
   };
 
   const handleSave = async () => {
+    if (apiKey && !assistantModel) {
+      alert('Choisissez un modèle assistant IA avant de sauvegarder.');
+      return;
+    }
     setSaving(true);
     try {
       await api.updateSettings({
         settings: {
           openrouter_api_key: apiKey || '',
-          models_enabled: JSON.stringify(modelsEnabled),
+          assistant_model: assistantModel,
           temperature: String(temperature),
           frequency,
           notifications_enabled: String(notifications),
@@ -351,7 +343,11 @@ export default function SettingsPage() {
                   className="input-field font-mono flex-1"
                   placeholder="sk-or-..."
                   value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
+                  onChange={(e) => {
+                    setApiKey(e.target.value);
+                    setTestStatus('idle');
+                    setHasConfiguredKey(false);
+                  }}
                 />
                 <button
                   onClick={handleTestKey}
@@ -382,41 +378,32 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Modèles */}
+          {/* Assistant IA */}
           <div className="glass-card rounded-xl p-6 space-y-4">
             <div>
               <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-                Modèles
+                Modèle assistant IA
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Activez ou désactivez les LLMs à tracker.
+                Ce modèle OpenRouter sera utilisé pour réécrire les prompts et analyser les réponses des scans. Les modèles suivis restent configurés séparément dans chaque projet.
               </p>
             </div>
-            <div className="space-y-2">
-              {modelsList.map((model) => (
-                <label
-                  key={model.id}
-                  className="flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-                >
-                  <input
-                    type="checkbox"
-                    className="rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500"
-                    checked={modelsEnabled.includes(model.id)}
-                    onChange={() => toggleModel(model.id)}
-                  />
-                  <span className="text-sm font-medium text-slate-900 dark:text-white flex items-center gap-2">
-                    {model.label}
-                    {checkingModels ? (
-                      <span className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-pulse" />
-                    ) : isModelAvailable(model.id) ? (
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="Disponible sur OpenRouter" />
-                    ) : (
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-400" title="Non trouvé sur OpenRouter" />
-                    )}
-                  </span>
-                </label>
-              ))}
-            </div>
+            {!hasConfiguredKey && testStatus !== 'ok' ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                Teste d’abord ta clé OpenRouter pour charger les modèles disponibles.
+              </div>
+            ) : (
+              <ModelPicker
+                models={availableModels}
+                selectedIds={assistantModel ? [assistantModel] : []}
+                onChange={(ids) => setAssistantModel(ids[0] ?? '')}
+                loading={checkingModels}
+                selectionLimit={1}
+                title="Assistant sélectionné"
+                description="Choisis un seul modèle pour les fonctions d’assistance. Les tarifs affichés proviennent directement du catalogue OpenRouter."
+                emptyMessage="Aucun assistant sélectionné. Choisis un modèle avant d’utiliser la réécriture ou l’analyse IA."
+              />
+            )}
           </div>
 
           {/* Configuration */}

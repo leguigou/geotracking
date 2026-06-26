@@ -30,6 +30,9 @@ export default function ScanHistory({ projectId, onClose }: Props) {
   const [results, setResults] = useState<ScanResultLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [analyzingId, setAnalyzingId] = useState<string | null>(null);
+  const [analyses, setAnalyses] = useState<Record<string, { text: string; model: string }>>({});
+  const [analysisErrors, setAnalysisErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -57,6 +60,27 @@ export default function ScanHistory({ projectId, onClose }: Props) {
     const batches = new Set(results.map((item) => item.batch_id).filter(Boolean)).size;
     return { total, mentions, errors, batches };
   }, [results]);
+
+  const analyzeEntry = async (entry: ScanResultLogEntry) => {
+    if (!entry.response_text) return;
+    setAnalyzingId(entry.id);
+    setAnalysisErrors((current) => ({ ...current, [entry.id]: '' }));
+    try {
+      const result = await api.analyzeResponse(entry.response_text, entry.prompt_text || '');
+      setAnalyses((current) => ({
+        ...current,
+        [entry.id]: { text: result.analysis, model: result.model },
+      }));
+    } catch (error) {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setAnalysisErrors((current) => ({
+        ...current,
+        [entry.id]: detail || 'Impossible d’analyser cette réponse.',
+      }));
+    } finally {
+      setAnalyzingId(null);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 px-3 py-6 sm:px-4 sm:py-12">
@@ -165,13 +189,27 @@ export default function ScanHistory({ projectId, onClose }: Props) {
                           <div className="mb-1.5 flex items-center justify-between gap-3">
                             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Réponse complète du modèle</p>
                             {entry.response_text && (
-                              <button
-                                type="button"
-                                onClick={() => navigator.clipboard.writeText(entry.response_text || '')}
-                                className="text-xs text-blue-600 hover:underline dark:text-blue-400"
-                              >
-                                Copier
-                              </button>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => navigator.clipboard.writeText(entry.response_text || '')}
+                                  className="text-xs text-blue-600 hover:underline dark:text-blue-400"
+                                >
+                                  Copier
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => analyzeEntry(entry)}
+                                  disabled={analyzingId === entry.id}
+                                  className="rounded-lg bg-violet-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-violet-500 disabled:cursor-wait disabled:opacity-60"
+                                >
+                                  {analyzingId === entry.id
+                                    ? 'Analyse...'
+                                    : analyses[entry.id]
+                                      ? 'Relancer l’analyse'
+                                      : 'Analyser avec l’IA'}
+                                </button>
+                              </div>
                             )}
                           </div>
                           {entry.response_text ? (
@@ -184,6 +222,32 @@ export default function ScanHistory({ projectId, onClose }: Props) {
                             </p>
                           )}
                         </section>
+
+                        {(analyses[entry.id] || analysisErrors[entry.id]) && (
+                          <section className={`rounded-xl border p-4 ${
+                            analysisErrors[entry.id]
+                              ? 'border-amber-200 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10'
+                              : 'border-violet-200 bg-violet-50 dark:border-violet-500/30 dark:bg-violet-500/10'
+                          }`}>
+                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300">
+                                Analyse de l’assistant IA
+                              </p>
+                              {analyses[entry.id] && (
+                                <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400">
+                                  {analyses[entry.id].model}
+                                </span>
+                              )}
+                            </div>
+                            {analysisErrors[entry.id] ? (
+                              <p className="text-sm text-amber-800 dark:text-amber-200">{analysisErrors[entry.id]}</p>
+                            ) : (
+                              <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-200">
+                                {analyses[entry.id]?.text}
+                              </div>
+                            )}
+                          </section>
+                        )}
 
                         <section>
                           <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">

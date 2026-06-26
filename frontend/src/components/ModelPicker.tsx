@@ -7,6 +7,10 @@ interface ModelPickerProps {
   selectedIds: string[];
   onChange: (ids: string[]) => void;
   loading?: boolean;
+  selectionLimit?: number;
+  title?: string;
+  description?: string;
+  emptyMessage?: string;
 }
 
 const providerLabel = (provider: string) => {
@@ -38,7 +42,16 @@ function priceSummary(model?: OpenRouterModel) {
   return `Input ${millionPrice(model.pricing.prompt)} · Output ${millionPrice(model.pricing.completion)}`;
 }
 
-export default function ModelPicker({ models, selectedIds, onChange, loading = false }: ModelPickerProps) {
+export default function ModelPicker({
+  models,
+  selectedIds,
+  onChange,
+  loading = false,
+  selectionLimit,
+  title,
+  description,
+  emptyMessage,
+}: ModelPickerProps) {
   const [provider, setProvider] = useState('all');
   const [query, setQuery] = useState('');
 
@@ -65,7 +78,7 @@ export default function ModelPicker({ models, selectedIds, onChange, loading = f
 
   const addModel = (modelId: string) => {
     if (!modelId || selectedIds.includes(modelId)) return;
-    onChange([...selectedIds, modelId]);
+    onChange(selectionLimit === 1 ? [modelId] : [...selectedIds, modelId]);
   };
 
   const removeModel = (modelId: string) => {
@@ -75,12 +88,12 @@ export default function ModelPicker({ models, selectedIds, onChange, loading = f
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-200">
-        Tu peux sélectionner plusieurs modèles du même fournisseur, par exemple GPT-4o mini + GPT-4.1 + o3-mini. Le coût affiché vient du catalogue OpenRouter.
+        {description ?? 'Tu peux sélectionner plusieurs modèles du même fournisseur, par exemple GPT-4o mini + GPT-4.1 + o3-mini. Le coût affiché vient du catalogue OpenRouter.'}
       </div>
 
       <div>
         <div className="mb-2 flex items-center justify-between gap-3">
-          <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Modèles sélectionnés</label>
+          <label className="text-sm font-medium text-slate-700 dark:text-slate-300">{title ?? 'Modèles sélectionnés'}</label>
           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500 dark:bg-slate-700 dark:text-slate-300">
             {selectedIds.length} modèle{selectedIds.length > 1 ? 's' : ''}
           </span>
@@ -88,7 +101,7 @@ export default function ModelPicker({ models, selectedIds, onChange, loading = f
 
         {selected.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-300 p-4 text-center text-sm text-slate-400 dark:border-slate-700">
-            Aucun modèle sélectionné. Ajoute au moins un modèle pour lancer les scans.
+            {emptyMessage ?? 'Aucun modèle sélectionné. Ajoute au moins un modèle pour lancer les scans.'}
           </div>
         ) : (
           <div className="grid gap-2 sm:grid-cols-2">

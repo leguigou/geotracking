@@ -19,7 +19,7 @@ from app.models.project import Project, Prompt
 from app.models.scan_result import ScanBatch, ScanResult
 from app.models.user import User
 from app.services.audit import log_action
-from app.services.openrouter import model_provider_key, resolve_legacy_project_models
+from app.services.openrouter import resolve_legacy_project_models
 from app.services.scan_queue import enqueue_scan
 from app.services.scanner import calculate_sov, run_assertions
 
@@ -62,6 +62,7 @@ class ScanBatchResponse(BaseModel):
 
     id: uuid.UUID
     status: str
+    requested_model: Optional[str] = None
     total_jobs: int
     completed_jobs: int
     failed_jobs: int
@@ -343,6 +344,7 @@ async def get_scan_status(
         "batch": {
             "id": str(batch.id),
             "status": batch.status,
+            "requested_model": batch.requested_model,
             "total_jobs": batch.total_jobs,
             "completed_jobs": batch.completed_jobs,
             "failed_jobs": batch.failed_jobs,
@@ -360,14 +362,14 @@ def _summarise_results(
     prompts_by_id: dict,
     project: Project | None = None,
 ) -> tuple[dict, dict, list, SOVStats]:
-    provider_groups: dict[str, list[ScanResult]] = {}
+    model_groups: dict[str, list[ScanResult]] = {}
     prompt_groups: dict[uuid.UUID, list[ScanResult]] = {}
     for result in results:
-        provider_groups.setdefault(model_provider_key(result.model), []).append(result)
+        model_groups.setdefault(result.model, []).append(result)
         prompt_groups.setdefault(result.prompt_id, []).append(result)
 
     provider_stats = {
-        provider: {
+        model: {
             "sov": calculate_sov(sum(1 for item in items if item.has_url or item.has_brand), len(items)),
             "mentions": sum(1 for item in items if item.has_url or item.has_brand),
             "total": len(items),
@@ -375,7 +377,7 @@ def _summarise_results(
             "url_found": sum(1 for item in items if item.has_url),
             "brand_found": sum(1 for item in items if item.has_brand),
         }
-        for provider, items in provider_groups.items()
+        for model, items in model_groups.items()
     }
     overall = {provider: stats["sov"] for provider, stats in provider_stats.items()}
     prompts = []
@@ -389,7 +391,7 @@ def _summarise_results(
             "models": models,
         }
         for item in items:
-            provider = model_provider_key(item.model)
+            model = item.model
             mentioned = item.has_url or item.has_brand
             competitors = []
             if project and item.response_text:
@@ -403,7 +405,7 @@ def _summarise_results(
                     ).get("competitors", [])
                     if not competitor["is_target"]
                 ][:10]
-            models[provider] = {
+            models[model] = {
                 "model": item.model,
                 "mentioned": mentioned,
                 "has_url": item.has_url,
@@ -412,7 +414,7 @@ def _summarise_results(
                 "error": item.error,
                 "competitors": competitors,
             }
-            row[provider] = mentioned
+            row[model] = mentioned
         prompts.append(row)
 
     total = len(results)

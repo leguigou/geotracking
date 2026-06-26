@@ -100,7 +100,13 @@ export default function TrendChart({ labels, datasets, height = 260, chartId }: 
         scales: {
           x: {
             grid: { color: gridColor },
-            ticks: { color: textColor, font: { size: 11 } },
+            ticks: {
+              color: textColor,
+              font: { size: 11 },
+              autoSkip: true,
+              maxTicksLimit: 12,
+              maxRotation: 0,
+            },
           },
           y: {
             grid: { color: gridColor },

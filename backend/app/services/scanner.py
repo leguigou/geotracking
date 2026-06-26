@@ -148,6 +148,7 @@ def run_assertions(
     response_text: str,
     target_url: str,
     brand_names: list[str],
+    include_competitors: bool = False,
 ) -> dict:
     """Analyse an LLM response for brand presence, URL presence, and rank.
 
@@ -162,10 +163,11 @@ def run_assertions(
 
     Returns
     -------
-    dict with keys ``has_url``, ``has_brand``, ``rank``, ``competitors``.
+    dict with keys ``has_url``, ``has_brand`` and ``rank``.
     ``rank`` is the 1-based position of the first numbered list item that
     mentions the URL or brand; ``None`` if not found in a list.
-    ``competitors`` is a list of dicts ``{"name": str, "url": str | None, "rank": int | None}``
+    When ``include_competitors`` is true, the return value also contains a
+    ``competitors`` list of dicts ``{"name": str, "url": str | None, "rank": int | None}``.
     """
     cleaned = _strip_markdown_url(response_text)
     target_lower = _normalise_domain(target_url)
@@ -180,7 +182,7 @@ def run_assertions(
     rank = None
     for line in response_text.split("\n"):
         stripped = line.strip()
-        match = re.match(r"^\s*(?:(\\d+)[.)]\\s+)", stripped)
+        match = re.match(r"^\s*(?:(\d+)[.)]\s+)", stripped)
         if match:
             item_num = int(match.group(1))
             item_body = stripped[match.end():].lower()
@@ -188,22 +190,21 @@ def run_assertions(
                 rank = item_num
                 break
 
-    # --- Competitor extraction ---
-    competitors = _extract_competitors(response_text, target_url, brand_names)
-
-    return {
+    payload = {
         "has_url": has_url,
         "has_brand": has_brand,
         "rank": rank,
-        "competitors": competitors,
     }
+    if include_competitors:
+        payload["competitors"] = _extract_competitors(response_text, target_url, brand_names)
+    return payload
 
 
 # ---------------------------------------------------------------------------
 # Competitor extraction
 # ---------------------------------------------------------------------------
 _URL_RE = re.compile(r"https?://(?:www\.)?([a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2,})?)(?:/\S*)?")
-_LIST_ITEM_RE = re.compile(r"^\s*(?:(\\d+)[.)]\\s+)(.+)$", re.MULTILINE)
+_LIST_ITEM_RE = re.compile(r"^\s*(?:(\d+)[.)]\s+)(.+)$", re.MULTILINE)
 _BRAND_CLEAN_RE = re.compile(r"[’'\"«»“”,;:!?().\[\]{} ]+")
 
 

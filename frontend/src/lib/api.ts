@@ -118,6 +118,12 @@ export interface LlmResult {
     has_brand: boolean
     rank?: number | null
     error?: string | null
+    competitors?: Array<{
+      name: string
+      url: string | null
+      rank: number | null
+      is_target?: boolean
+    }>
   }>
   [key: string]: unknown
 }
@@ -312,9 +318,24 @@ export interface DashboardOverview {
     is_active: boolean
     prompt_count: number
     overall: Record<string, number>
+    sov_avg?: number | null
     batch: { id: string; status: string; failed_jobs: number; scan_date: string } | null
   }>
   trend: Array<{ date: string; [key: string]: string | number }>
+  alerts?: Array<{
+    severity: "info" | "warning" | "critical"
+    project_id: string
+    project_name: string
+    message: string
+  }>
+  top_competitors?: Array<{
+    name: string
+    url: string | null
+    mentions: number
+    average_rank: number | null
+    projects: string[]
+    models: string[]
+  }>
 }
 
 export const getDashboardOverview = () =>

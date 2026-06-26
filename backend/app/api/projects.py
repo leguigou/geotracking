@@ -47,7 +47,8 @@ async def create_project(
     org_id: str = Depends(get_current_organization),
     db: AsyncSession = Depends(get_db),
 ):
-    # Si des slugs frontend sont fournis, les convertir en modèles OpenRouter
+    # Si des slugs frontend legacy sont fournis, les convertir en modèles OpenRouter.
+    # Sinon conserver les identifiants OpenRouter exacts envoyés par le wizard actuel.
     final_models = req.enabled_models
     if req.models:
         final_models = resolve_models(req.models)

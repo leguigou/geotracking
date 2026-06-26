@@ -227,6 +227,43 @@ export default function DashboardProject() {
     });
   }, [promptsRaw, latest, activeLlmDefs]);
 
+  const projectInsights = useMemo(() => {
+    const rows = promptRows;
+    const providerIds = activeLlmDefs.map((provider) => provider.id);
+    const absentCells = rows.reduce((count, row) => (
+      count + providerIds.filter((providerId) => row[providerId] === 'absent' || row[providerId] === 'not_scanned').length
+    ), 0);
+    const errorCells = rows.reduce((count, row) => (
+      count + providerIds.filter((providerId) => row[providerId] === 'error').length
+    ), 0);
+    const competitors = new Map<string, { name: string; mentions: number; bestRank: number | null; url: string | null }>();
+
+    for (const prompt of latest?.prompts ?? []) {
+      for (const model of Object.values(prompt.models ?? {})) {
+        for (const competitor of model.competitors ?? []) {
+          const name = String(competitor.name || '').trim();
+          if (!name) continue;
+          const key = name.toLowerCase();
+          const existing = competitors.get(key) ?? { name, mentions: 0, bestRank: null, url: competitor.url ?? null };
+          existing.mentions += 1;
+          if (competitor.rank != null) {
+            existing.bestRank = existing.bestRank == null ? competitor.rank : Math.min(existing.bestRank, competitor.rank);
+          }
+          if (!existing.url && competitor.url) existing.url = competitor.url;
+          competitors.set(key, existing);
+        }
+      }
+    }
+
+    return {
+      absentCells,
+      errorCells,
+      topCompetitors: Array.from(competitors.values())
+        .sort((a, b) => b.mentions - a.mentions || (a.bestRank ?? 999) - (b.bestRank ?? 999))
+        .slice(0, 3),
+    };
+  }, [activeLlmDefs, latest?.prompts, promptRows]);
+
   /* ── Trend chart ────────────────────────────────────────── */
   const chartLabels = useMemo(() => {
     if (!history?.length) return [];
@@ -596,6 +633,57 @@ export default function DashboardProject() {
               +{history.length - 5} scan(s) plus ancien(s) — <button onClick={() => setShowScanHistory(true)} className="text-blue-500 hover:underline">Voir tout</button>
             </p>
           )}
+        </div>
+      )}
+
+      {(latest || projectInsights.topCompetitors.length > 0) && (
+        <div className="glass-card rounded-xl p-5 mb-8">
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <div>
+              <h2 className="text-base font-semibold text-slate-900 dark:text-white">Prochaines actions</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Lecture rapide du dernier scan pour savoir quoi traiter en premier.
+              </p>
+            </div>
+            {latest?.sov.average_rank != null && (
+              <span className="text-xs rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2.5 py-1">
+                Rang moyen #{latest.sov.average_rank}
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className={`rounded-xl border p-4 ${projectInsights.absentCells ? 'border-amber-200 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10' : 'border-emerald-200 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-500/10'}`}>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Mentions manquantes</p>
+              <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{projectInsights.absentCells}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                {projectInsights.absentCells ? 'Priorise les prompts absents et ajoute du contenu repondant exactement a ces questions.' : 'Bonne couverture sur les prompts scannes.'}
+              </p>
+            </div>
+            <div className={`rounded-xl border p-4 ${projectInsights.errorCells ? 'border-red-200 bg-red-50 dark:border-red-500/30 dark:bg-red-500/10' : 'border-slate-200 bg-white dark:border-slate-700/50 dark:bg-slate-800/50'}`}>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Erreurs OpenRouter</p>
+              <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{projectInsights.errorCells}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                {projectInsights.errorCells ? 'Relance le scan ou verifie la cle et les modeles actives.' : 'Aucune erreur visible sur le dernier scan.'}
+              </p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-700/50 dark:bg-slate-800/50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Concurrents a surveiller</p>
+              {projectInsights.topCompetitors.length === 0 ? (
+                <p className="text-sm text-slate-400 mt-3">Aucun concurrent detecte dans les reponses analysees.</p>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  {projectInsights.topCompetitors.map((competitor) => (
+                    <div key={competitor.name} className="flex items-center justify-between gap-3 text-sm">
+                      <span className="truncate font-medium text-slate-800 dark:text-slate-200">{competitor.name}</span>
+                      <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
+                        {competitor.mentions}x{competitor.bestRank ? ` · #${competitor.bestRank}` : ''}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

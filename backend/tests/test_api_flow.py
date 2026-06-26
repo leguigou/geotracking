@@ -22,6 +22,22 @@ def test_project_contract_keeps_description_and_models(client, account, project)
     assert len(response.json()) == 1
 
 
+def test_project_create_accepts_legacy_model_slugs(client, account):
+    response = client.post(
+        "/api/projects",
+        headers=account["headers"],
+        json={
+            "name": "Legacy Models",
+            "target_url": "legacy.example.com",
+            "brand_names": ["Legacy"],
+            "models": ["chatgpt", "claude"],
+        },
+    )
+    assert response.status_code == 201, response.text
+    payload = response.json()
+    assert payload["enabled_models"] == ["openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet"]
+
+
 def test_scan_accepts_model_in_json_body(client, account, project, monkeypatch):
     client.post(
         f"/api/projects/{project['id']}/prompts",

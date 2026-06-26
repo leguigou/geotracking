@@ -284,7 +284,12 @@ async def get_scan_status(
                 # Compute competitors from response_text
                 competitors = []
                 if result.response_text:
-                    comps = run_assertions(result.response_text, project_target_url, project_brands).get("competitors", [])
+                    comps = run_assertions(
+                        result.response_text,
+                        project_target_url,
+                        project_brands,
+                        include_competitors=True,
+                    ).get("competitors", [])
                     competitors = [c for c in comps if not c["is_target"]][:10]
 
                 cells[model] = {
@@ -318,7 +323,11 @@ async def get_scan_status(
     }
 
 
-def _summarise_results(results: list[ScanResult], prompts_by_id: dict) -> tuple[dict, list, SOVStats]:
+def _summarise_results(
+    results: list[ScanResult],
+    prompts_by_id: dict,
+    project: Project | None = None,
+) -> tuple[dict, list, SOVStats]:
     provider_groups: dict[str, list[ScanResult]] = {}
     prompt_groups: dict[uuid.UUID, list[ScanResult]] = {}
     for result in results:
@@ -342,6 +351,18 @@ def _summarise_results(results: list[ScanResult], prompts_by_id: dict) -> tuple[
         for item in items:
             provider = model_provider_key(item.model)
             mentioned = item.has_url or item.has_brand
+            competitors = []
+            if project and item.response_text:
+                competitors = [
+                    competitor
+                    for competitor in run_assertions(
+                        item.response_text,
+                        project.target_url,
+                        project.brand_names or [],
+                        include_competitors=True,
+                    ).get("competitors", [])
+                    if not competitor["is_target"]
+                ][:10]
             models[provider] = {
                 "model": item.model,
                 "mentioned": mentioned,
@@ -349,6 +370,7 @@ def _summarise_results(results: list[ScanResult], prompts_by_id: dict) -> tuple[
                 "has_brand": item.has_brand,
                 "rank": item.rank,
                 "error": item.error,
+                "competitors": competitors,
             }
             row[provider] = mentioned
         prompts.append(row)
@@ -375,7 +397,7 @@ async def get_latest_results(
     db: AsyncSession = Depends(get_db),
 ):
     uid = _resolve_uuid(project_id)
-    await _owned_project(db, uid, org_id)
+    project = await _owned_project(db, uid, org_id)
     batch_result = await db.execute(
         select(ScanBatch).where(ScanBatch.project_id == uid).order_by(desc(ScanBatch.created_at)).limit(1)
     )
@@ -393,7 +415,7 @@ async def get_latest_results(
         prompt_result = await db.execute(select(Prompt).where(Prompt.id.in_(prompt_ids)))
         prompts_by_id = {prompt.id: prompt for prompt in prompt_result.scalars().all()}
 
-    overall, prompts, sov = _summarise_results(results, prompts_by_id)
+    overall, prompts, sov = _summarise_results(results, prompts_by_id, project)
     return LatestScanResponse(
         batch=batch,
         scan_date=batch.completed_at or batch.created_at,

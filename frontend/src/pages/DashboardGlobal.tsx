@@ -23,6 +23,13 @@ export default function DashboardGlobal() {
 
   const projectsList = overview?.projects ?? [];
   const totals = overview?.totals ?? { projects: 0, active_projects: 0, prompts: 0, average_sov: 0, failed_jobs: 0 };
+  const alerts = overview?.alerts ?? [];
+  const topCompetitors = overview?.top_competitors ?? [];
+  const alertStyles = {
+    critical: 'border-red-200 bg-red-50 text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200',
+    warning: 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200',
+    info: 'border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-200',
+  } as const;
 
   const kpiCards = [
     {
@@ -62,8 +69,8 @@ export default function DashboardGlobal() {
     },
     {
       title: t('global.alerts'),
-      value: String(totals.failed_jobs),
-      trend: totals.failed_jobs ? t('global.urgent') : 'Aucune erreur',
+      value: String(alerts.length || totals.failed_jobs),
+      trend: alerts.length ? 'actions prioritaires' : totals.failed_jobs ? t('global.urgent') : 'Aucune erreur',
       trendColor: 'text-slate-500 dark:text-slate-400',
       icon: (
         <svg className="w-5 h-5 text-slate-600 dark:text-slate-400" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
@@ -141,6 +148,69 @@ export default function DashboardGlobal() {
         {kpiCards.map((kpi, i) => (
           <StatsCard key={i} {...kpi} />
         ))}
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-8">
+        <div className="glass-card rounded-xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-base font-semibold text-slate-900 dark:text-white">Alertes prioritaires</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Les points a traiter en premier sur les derniers scans.</p>
+            </div>
+            <span className="text-xs text-slate-400">{alerts.length} alerte{alerts.length > 1 ? 's' : ''}</span>
+          </div>
+          {alerts.length === 0 ? (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200">
+              Rien d'urgent : les derniers scans ne remontent pas d'anomalie forte.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {alerts.slice(0, 5).map((alert, index) => (
+                <button
+                  key={`${alert.project_id}-${index}`}
+                  onClick={() => navigate(`/project/${alert.project_id}`)}
+                  className={`w-full text-left rounded-xl border px-4 py-3 text-sm transition hover:shadow-sm ${alertStyles[alert.severity]}`}
+                >
+                  <span className="block text-xs font-semibold uppercase tracking-wide opacity-70">{alert.project_name}</span>
+                  <span>{alert.message}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="glass-card rounded-xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-base font-semibold text-slate-900 dark:text-white">Concurrents visibles</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Les marques qui reviennent le plus souvent dans les reponses IA.</p>
+            </div>
+          </div>
+          {topCompetitors.length === 0 ? (
+            <p className="text-sm text-slate-400 py-4 text-center">Aucun concurrent detecte pour le moment.</p>
+          ) : (
+            <div className="space-y-2">
+              {topCompetitors.slice(0, 5).map((competitor, index) => (
+                <div key={`${competitor.name}-${index}`} className="flex items-center gap-3 rounded-xl border border-slate-200 dark:border-slate-700/50 px-4 py-3">
+                  <span className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-500">{index + 1}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">{competitor.name}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                      {competitor.mentions} mention{competitor.mentions > 1 ? 's' : ''}
+                      {competitor.average_rank ? ` · rang moyen #${competitor.average_rank}` : ''}
+                      {competitor.models.length ? ` · ${competitor.models.join(', ')}` : ''}
+                    </p>
+                  </div>
+                  {competitor.url && (
+                    <a href={competitor.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                      site
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="glass-card rounded-xl p-5 mb-8">

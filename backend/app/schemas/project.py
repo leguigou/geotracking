@@ -13,7 +13,10 @@ class ProjectCreate(BaseModel):
     target_url: str = Field(min_length=3)
     description: Optional[str] = None
     brand_names: list[str] = Field(default_factory=list)
-    enabled_models: list[str] = Field(default_factory=list, min_length=1)
+    # Legacy provider slugs, e.g. ["chatgpt", "claude"].
+    # New clients should prefer enabled_models with full OpenRouter ids.
+    models: Optional[list[str]] = None
+    enabled_models: list[str] = Field(default_factory=list)
     frequency: Literal["daily", "weekly", "biweekly", "monthly"] = "daily"
 
     @field_validator("name", "target_url")
@@ -42,7 +45,9 @@ class ProjectCreate(BaseModel):
     @classmethod
     def validate_model_ids(cls, values: list[str]) -> list[str]:
         cleaned = list(dict.fromkeys(value.strip() for value in values if value.strip()))
-        if not cleaned or any("/" not in value for value in cleaned):
+        if not cleaned:
+            return []
+        if any("/" not in value for value in cleaned):
             raise ValueError("Utilisez des identifiants OpenRouter complets (provider/model)")
         return cleaned
 

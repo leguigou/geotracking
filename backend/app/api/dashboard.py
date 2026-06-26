@@ -12,7 +12,7 @@ from app.dependencies import get_current_organization
 from app.models.project import Project, Prompt
 from app.models.scan_result import ScanBatch, ScanResult
 from app.services.openrouter import model_provider_key
-from app.services.scanner import calculate_sov
+from app.services.scanner import calculate_sov, run_assertions
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -24,6 +24,58 @@ def _provider_sov(results: list[ScanResult]) -> dict[str, float]:
     return {
         provider: calculate_sov(sum(1 for item in items if item.has_url or item.has_brand), len(items))
         for provider, items in grouped.items()
+    }
+
+
+def _competitor_counts(project: Project, results: list[ScanResult]) -> dict[str, dict]:
+    competitors: dict[str, dict] = {}
+    for result in results:
+        if not result.response_text:
+            continue
+        assertions = run_assertions(
+            result.response_text,
+            project.target_url,
+            project.brand_names or [],
+            include_competitors=True,
+        )
+        for competitor in assertions.get("competitors", []):
+            if competitor["is_target"]:
+                continue
+            name = str(competitor["name"]).strip()
+            if not name:
+                continue
+            key = name.lower()
+            entry = competitors.setdefault(
+                key,
+                {
+                    "name": name,
+                    "url": competitor.get("url"),
+                    "mentions": 0,
+                    "rank_sum": 0,
+                    "rank_count": 0,
+                    "projects": set(),
+                    "models": set(),
+                },
+            )
+            entry["mentions"] += 1
+            entry["projects"].add(project.name)
+            entry["models"].add(model_provider_key(result.model))
+            if competitor.get("rank") is not None:
+                entry["rank_sum"] += int(competitor["rank"])
+                entry["rank_count"] += 1
+            if not entry["url"] and competitor.get("url"):
+                entry["url"] = competitor["url"]
+    return competitors
+
+
+def _serialise_competitor(entry: dict) -> dict:
+    return {
+        "name": entry["name"],
+        "url": entry.get("url"),
+        "mentions": entry["mentions"],
+        "average_rank": round(entry["rank_sum"] / entry["rank_count"], 1) if entry["rank_count"] else None,
+        "projects": sorted(entry["projects"]),
+        "models": sorted(entry["models"]),
     }
 
 
@@ -42,6 +94,8 @@ async def dashboard_overview(
             "totals": {"projects": 0, "active_projects": 0, "prompts": 0, "average_sov": 0, "failed_jobs": 0},
             "projects": [],
             "trend": [],
+            "alerts": [],
+            "top_competitors": [],
         }
 
     count_rows = await db.execute(
@@ -79,11 +133,64 @@ async def dashboard_overview(
     project_summaries = []
     all_latest_sov: list[float] = []
     failed_jobs = 0
+    alerts: list[dict] = []
+    competitors: dict[str, dict] = {}
     for project in projects:
         batch = latest_by_project.get(project.id)
-        overall = _provider_sov(results_by_batch.get(batch.id, [])) if batch else {}
+        latest_results = results_by_batch.get(batch.id, []) if batch else []
+        overall = _provider_sov(latest_results) if batch else {}
         all_latest_sov.extend(overall.values())
         failed_jobs += batch.failed_jobs if batch else 0
+        for key, entry in _competitor_counts(project, latest_results).items():
+            current = competitors.setdefault(
+                key,
+                {
+                    "name": entry["name"],
+                    "url": entry.get("url"),
+                    "mentions": 0,
+                    "rank_sum": 0,
+                    "rank_count": 0,
+                    "projects": set(),
+                    "models": set(),
+                },
+            )
+            current["mentions"] += entry["mentions"]
+            current["rank_sum"] += entry["rank_sum"]
+            current["rank_count"] += entry["rank_count"]
+            current["projects"].update(entry["projects"])
+            current["models"].update(entry["models"])
+            if not current["url"] and entry.get("url"):
+                current["url"] = entry["url"]
+
+        project_avg_sov = round(sum(overall.values()) / len(overall), 1) if overall else None
+        if project.is_active and not batch:
+            alerts.append({
+                "severity": "info",
+                "project_id": str(project.id),
+                "project_name": project.name,
+                "message": "Aucun scan encore disponible : lance un premier scan pour créer le point de référence.",
+            })
+        if batch and batch.failed_jobs:
+            alerts.append({
+                "severity": "warning",
+                "project_id": str(project.id),
+                "project_name": project.name,
+                "message": f"{batch.failed_jobs} requête(s) OpenRouter ont échoué sur le dernier scan.",
+            })
+        if project_avg_sov == 0 and latest_results:
+            alerts.append({
+                "severity": "critical",
+                "project_id": str(project.id),
+                "project_name": project.name,
+                "message": "La marque est absente de toutes les réponses du dernier scan.",
+            })
+        elif project_avg_sov is not None and project_avg_sov < 25:
+            alerts.append({
+                "severity": "warning",
+                "project_id": str(project.id),
+                "project_name": project.name,
+                "message": f"SOV faible sur le dernier scan ({project_avg_sov}%). Priorité aux prompts absents.",
+            })
         project_summaries.append(
             {
                 "id": str(project.id),
@@ -91,6 +198,7 @@ async def dashboard_overview(
                 "is_active": project.is_active,
                 "prompt_count": int(prompt_counts.get(project.id, 0)),
                 "overall": overall,
+                "sov_avg": project_avg_sov,
                 "batch": {
                     "id": str(batch.id),
                     "status": batch.status,
@@ -125,4 +233,12 @@ async def dashboard_overview(
         },
         "projects": project_summaries,
         "trend": trend,
+        "alerts": alerts[:10],
+        "top_competitors": [
+            _serialise_competitor(entry)
+            for entry in sorted(
+                competitors.values(),
+                key=lambda item: (-item["mentions"], item["rank_sum"] / item["rank_count"] if item["rank_count"] else 999),
+            )[:10]
+        ],
     }

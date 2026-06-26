@@ -72,6 +72,26 @@ services:
     labels:
       - "traefik.enable=false"
 
+  scheduler:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://geotrack:geotrack_pass@db:5432/geotrack"
+      REDIS_URL: "redis://redis:6379/0"
+      CORS_ORIGINS: "https://geotrack.deloffre.fr"
+      ENVIRONMENT: "${ENVIRONMENT:-production}"
+      JWT_SECRET: "${JWT_SECRET:-change-me-in-dokploy-env}"
+      OPENAI_API_KEY: "${OPENROUTER_API_KEY:-}"
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
+    command: ["python", "-m", "app.services.scheduler"]
+    labels:
+      - "traefik.enable=false"
+
 volumes:
   pgdata:
     name: geotrack_pgdata

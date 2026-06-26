@@ -18,6 +18,24 @@ const apiErrorMessage = (error: unknown) => {
   return detail || (error instanceof Error ? error.message : 'Une erreur inattendue est survenue');
 };
 
+const TREND_COLORS = [
+  '#2563eb',
+  '#7c3aed',
+  '#059669',
+  '#ea580c',
+  '#db2777',
+  '#0891b2',
+  '#ca8a04',
+  '#475569',
+];
+
+const TREND_DASHES: Array<number[] | undefined> = [
+  undefined,
+  [7, 4],
+  [2, 3],
+  [10, 4, 2, 4],
+];
+
 interface PromptRowData {
   id: string;
   prompt: string;
@@ -277,28 +295,80 @@ export default function DashboardProject() {
     });
   }, [history, period]);
 
-  const chartLabels = useMemo(() => {
-    return filteredHistory.map((h) => {
-      const d = new Date(h.scan_date);
-      return d.toLocaleString('fr-FR', {
-        day: '2-digit',
-        month: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    });
+  const trendPoints = useMemo(() => {
+    const byDay = new Map<string, {
+      date: Date;
+      models: Record<string, { mentions: number; total: number; failed: number; sov: number }>;
+    }>();
+
+    const chronological = [...filteredHistory].sort(
+      (a, b) => new Date(a.scan_date).getTime() - new Date(b.scan_date).getTime(),
+    );
+    for (const entry of chronological) {
+      const date = new Date(entry.scan_date);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      const point = byDay.get(key) ?? { date, models: {} };
+      for (const [modelId, stats] of Object.entries(entry.provider_stats ?? {})) {
+        const mentions = stats.mentions ?? 0;
+        const total = stats.total ?? 0;
+        point.models[modelId] = {
+          mentions,
+          total,
+          failed: stats.failed ?? 0,
+          sov: total ? Math.round((mentions / total) * 1000) / 10 : 0,
+        };
+      }
+      point.date = date;
+      byDay.set(key, point);
+    }
+
+    return Array.from(byDay.values()).sort((a, b) => a.date.getTime() - b.date.getTime());
   }, [filteredHistory]);
 
+  const chartLabels = useMemo(() => {
+    return trendPoints.map((point) => (
+      point.date.toLocaleDateString('fr-FR', {
+        day: '2-digit',
+        month: '2-digit',
+      })
+    ));
+  }, [trendPoints]);
+
   const chartDatasets = useMemo(() => {
-    if (!filteredHistory.length) return [];
-    return activeLlmDefs.map((llm) => ({
+    if (!trendPoints.length) return [];
+    return activeLlmDefs.map((llm, index) => ({
       label: llm.label,
-      data: filteredHistory.map((h) => h.provider_stats?.[llm.id]?.sov ?? null),
-      pointMeta: filteredHistory.map((h) => h.provider_stats?.[llm.id] ?? null),
-      borderColor: llm.chartColor,
-      borderDash: filteredHistory.every((h) => !h.provider_stats?.[llm.id] || h.provider_stats[llm.id].sov === 0) ? [4, 3] as number[] : undefined,
+      data: trendPoints.map((point) => point.models[llm.id]?.sov ?? null),
+      pointMeta: trendPoints.map((point) => point.models[llm.id] ?? null),
+      borderColor: TREND_COLORS[index % TREND_COLORS.length],
+      borderDash: TREND_DASHES[index % TREND_DASHES.length],
     }));
-  }, [filteredHistory, activeLlmDefs]);
+  }, [trendPoints, activeLlmDefs]);
+
+  const modelComparison = useMemo(() => (
+    activeLlmDefs
+      .map((llm, index) => {
+        const totals = trendPoints.reduce(
+          (aggregate, point) => {
+            const stats = point.models[llm.id];
+            if (stats) {
+              aggregate.mentions += stats.mentions ?? 0;
+              aggregate.total += stats.total ?? 0;
+              aggregate.failed += stats.failed ?? 0;
+            }
+            return aggregate;
+          },
+          { mentions: 0, total: 0, failed: 0 },
+        );
+        return {
+          ...llm,
+          ...totals,
+          sov: totals.total ? Math.round((totals.mentions / totals.total) * 1000) / 10 : null,
+          color: TREND_COLORS[index % TREND_COLORS.length],
+        };
+      })
+      .sort((a, b) => (b.sov ?? -1) - (a.sov ?? -1))
+  ), [activeLlmDefs, trendPoints]);
 
   /* ── Themes ──────────────────────────────────────────────── */
   const themes = useMemo(() => {
@@ -761,12 +831,12 @@ export default function DashboardProject() {
           <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
             <h2 className="text-base font-semibold text-slate-900 dark:text-white">{t('project.trendTitle', { name: project?.name ?? '' })}</h2>
             <HelpTooltip title="Lire la tendance">
-              La courbe compare les scans terminés. Un point à 0% signifie que des réponses ont bien été analysées mais que la marque n'est pas sortie. Une absence de point signifie qu'il n'y avait pas de donnée.
+              Chaque courbe représente un modèle exact. Pour éviter qu'une série de relances dans la même journée fausse la tendance, le point quotidien conserve le dernier résultat disponible de chaque modèle. Un point à 0% signifie que des réponses ont été analysées sans mention de la marque.
             </HelpTooltip>
           </div>
           <div className="flex items-center gap-2">
             <span className="hidden text-xs text-slate-400 sm:inline">
-              {filteredHistory.length} scan{filteredHistory.length > 1 ? 's' : ''}
+              {filteredHistory.length} campagne{filteredHistory.length > 1 ? 's' : ''} · {trendPoints.length} jour{trendPoints.length > 1 ? 's' : ''}
             </span>
             <select value={period} onChange={(e) => setPeriod(e.target.value)} className="text-xs bg-transparent border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-slate-600 dark:text-slate-400 outline-none">
               <option value="last7d">{t('project.last7d')}</option>
@@ -775,6 +845,32 @@ export default function DashboardProject() {
             </select>
           </div>
         </div>
+        {modelComparison.length > 0 && (
+          <div className="mb-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {modelComparison.map((model, index) => (
+              <div key={model.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/40">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: model.color }} />
+                    <span className="truncate text-xs font-semibold text-slate-800 dark:text-slate-200" title={model.label}>
+                      {model.label}
+                    </span>
+                  </div>
+                  {index === 0 && model.sov != null && modelComparison.length > 1 && modelComparison[1]?.sov !== model.sov && (
+                    <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+                      Meilleur
+                    </span>
+                  )}
+                </div>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-xl font-bold text-slate-900 dark:text-white">{model.sov == null ? '—' : `${model.sov}%`}</span>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">{model.mentions}/{model.total} mentions</span>
+                </div>
+                {model.failed > 0 && <p className="mt-1 text-[10px] text-amber-600 dark:text-amber-300">{model.failed} erreur{model.failed > 1 ? 's' : ''}</p>}
+              </div>
+            ))}
+          </div>
+        )}
         <TrendChart chartId="trendProject" labels={chartLabels} datasets={chartDatasets} />
       </div>
 

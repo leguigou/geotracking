@@ -9,10 +9,11 @@ they cannot double-scan the same project.
 import asyncio
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from app.database import async_session
 from app.models.project import Project
+from app.models.scan_result import ScanBatch
 from app.services.scan_queue import enqueue_scan
 
 
@@ -47,13 +48,28 @@ async def enqueue_due_projects(now: datetime | None = None) -> int:
                 select(Project).where(Project.is_active.is_(True))
             )
             projects = list(result.scalars().all())
+            latest_batch_rows = await db.execute(
+                select(ScanBatch.project_id, func.max(ScanBatch.created_at))
+                .where(ScanBatch.project_id.in_([project.id for project in projects]))
+                .group_by(ScanBatch.project_id)
+            )
+            latest_batch_by_project = dict(latest_batch_rows.all())
 
         enqueued = 0
         for project in projects:
             delay = FREQUENCY_DELAYS.get(project.frequency)
             if not delay:
                 continue
-            baseline = project.last_scheduled_scan_at or project.created_at
+            baselines = [
+                value
+                for value in (
+                    project.last_scheduled_scan_at,
+                    latest_batch_by_project.get(project.id),
+                    project.created_at,
+                )
+                if value is not None
+            ]
+            baseline = max(baselines, key=_as_utc) if baselines else None
             if not baseline or _as_utc(baseline) + delay > now:
                 continue
 
@@ -80,14 +96,8 @@ async def enqueue_due_projects(now: datetime | None = None) -> int:
             try:
                 await enqueue_scan(str(project.id))
             except (RuntimeError, ValueError):
-                # Roll back the timestamp so it's retried next tick.
-                async with async_session() as db:
-                    await db.execute(
-                        update(Project)
-                        .where(Project.id == project.id)
-                        .values(last_scheduled_scan_at=project.last_scheduled_scan_at)
-                    )
-                    await db.commit()
+                # Keep the claim. Retrying an invalid or already-running project
+                # every minute can create a scan storm as soon as it becomes free.
                 continue
             enqueued += 1
 

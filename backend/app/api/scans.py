@@ -8,7 +8,7 @@ from arq import create_pool
 from arq.connections import RedisSettings
 from arq.jobs import Job
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -55,6 +55,7 @@ class ScanResultResponse(BaseModel):
     error: Optional[str] = None
     scanned_at: datetime
     response_text: str | None = None
+    competitors: list[dict] = Field(default_factory=list)
 
 class ScanBatchResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -203,7 +204,7 @@ async def list_results(
     offset: int = Query(0, ge=0),
 ):
     uid = _resolve_uuid(project_id)
-    await _owned_project(db, uid, org_id)
+    project = await _owned_project(db, uid, org_id)
     result = await db.execute(
         select(ScanResult, Prompt.text)
         .join(Prompt, Prompt.id == ScanResult.prompt_id)
@@ -212,10 +213,28 @@ async def list_results(
         .offset(offset)
         .limit(limit)
     )
-    return [
-        {**ScanResultResponse.model_validate(scan).model_dump(), "prompt_text": prompt_text}
-        for scan, prompt_text in result.all()
-    ]
+    rows = []
+    for scan, prompt_text in result.all():
+        competitors = []
+        if scan.response_text:
+            competitors = [
+                competitor
+                for competitor in run_assertions(
+                    scan.response_text,
+                    project.target_url,
+                    project.brand_names or [],
+                    include_competitors=True,
+                ).get("competitors", [])
+                if not competitor["is_target"]
+            ]
+        rows.append(
+            {
+                **ScanResultResponse.model_validate(scan).model_dump(),
+                "prompt_text": prompt_text,
+                "competitors": competitors,
+            }
+        )
+    return rows
 
 
 @router.get("/{project_id}/scan/status")
@@ -309,6 +328,9 @@ async def get_scan_status(
                     "rank": result.rank,
                     "error": result.error,
                     "latency_ms": result.latency_ms,
+                    "tokens_used": result.tokens_used,
+                    "cost": result.cost,
+                    "scanned_at": result.scanned_at.isoformat() if result.scanned_at else None,
                     "response_snippet": result.response_text if result.response_text else None,
                     "competitors": competitors,
                 }

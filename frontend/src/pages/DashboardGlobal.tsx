@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import StatsCard from '../components/StatsCard';
 import TrendChart from '../components/TrendChart';
 import ProjectMatrix from '../components/ProjectMatrix';
+import HelpTooltip from '../components/HelpTooltip';
 import { api, type DashboardOverview } from '../lib/api';
 
 const providers = ['chatgpt', 'claude', 'perplexity', 'gemini', 'grok', 'deepseek'] as const;
@@ -145,17 +146,17 @@ export default function DashboardGlobal() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{t('global.title')}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{t('global.subtitle')}</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" /></svg>
             <span>{t('global.period')}</span>
           </div>
-          <button className="btn-primary inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold bg-gradient-to-r from-blue-600 to-violet-600 text-white hover:from-blue-500 hover:to-violet-500 shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 transition-all duration-200 active:scale-[.97]" onClick={() => navigate('/project/new')}>
+          <button className="btn-primary inline-flex w-full items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold bg-gradient-to-r from-blue-600 to-violet-600 text-white hover:from-blue-500 hover:to-violet-500 shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 transition-all duration-200 active:scale-[.97] sm:w-auto" onClick={() => navigate('/project/new')}>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
             <span>{t('global.deploy')}</span>
           </button>
@@ -168,12 +169,28 @@ export default function DashboardGlobal() {
         ))}
       </div>
 
+      <div className="mb-8 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100">
+        <div className="flex items-start gap-3">
+          <HelpTooltip title="Comment lire les scores ?">
+            3/6 signifie que la marque a été citée dans 3 réponses sur 6 réponses analysées. 0/6 veut dire que des scans ont bien eu lieu, mais que la marque n'est jamais sortie. N/A veut dire qu'il n'y a pas encore de donnée pour ce modèle.
+          </HelpTooltip>
+          <p>
+            Lecture rapide : <strong>3/6</strong> = 3 réponses citent la marque sur 6 réponses analysées. <strong>0/6</strong> est une vraie donnée, pas une absence de scan.
+          </p>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-8">
         <div className="glass-card rounded-xl p-5">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-base font-semibold text-slate-900 dark:text-white">Alertes prioritaires</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Les points a traiter en premier sur les derniers scans.</p>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-semibold text-slate-900 dark:text-white">Alertes prioritaires</h2>
+                <HelpTooltip title="Alertes prioritaires">
+                  Ce bloc met en avant les problèmes à traiter d'abord : aucun scan, erreurs OpenRouter, ou visibilité très faible sur le dernier scan.
+                </HelpTooltip>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Les points à traiter en premier sur les derniers scans.</p>
             </div>
             <span className="text-xs text-slate-400">{alerts.length} alerte{alerts.length > 1 ? 's' : ''}</span>
           </div>
@@ -200,8 +217,13 @@ export default function DashboardGlobal() {
         <div className="glass-card rounded-xl p-5">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-base font-semibold text-slate-900 dark:text-white">Concurrents visibles</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Les marques qui reviennent le plus souvent dans les reponses IA.</p>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-semibold text-slate-900 dark:text-white">Concurrents visibles</h2>
+                <HelpTooltip title="Concurrents visibles">
+                  Ce sont les marques ou sites que les IA citent à la place ou à côté de ta marque dans les dernières réponses analysées.
+                </HelpTooltip>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Les marques qui reviennent le plus souvent dans les réponses IA.</p>
             </div>
           </div>
           {topCompetitors.length === 0 ? (
@@ -233,7 +255,12 @@ export default function DashboardGlobal() {
 
       <div className="glass-card rounded-xl p-5 mb-8">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold text-slate-900 dark:text-white">{t('global.trendTitle')}</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-semibold text-slate-900 dark:text-white">{t('global.trendTitle')}</h2>
+            <HelpTooltip title="Évolution de la visibilité">
+              Chaque courbe montre la part de réponses où ta marque est citée. Une absence de point signifie qu'il n'y avait pas de donnée ; un point à 0% signifie que des réponses ont été analysées, mais sans mention.
+            </HelpTooltip>
+          </div>
           <div className="flex flex-wrap items-center justify-end gap-3 text-xs text-slate-500 dark:text-slate-400">
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-blue-500" /> ChatGPT</span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-violet-500" /> Claude</span>
@@ -248,7 +275,12 @@ export default function DashboardGlobal() {
 
       <div className="glass-card rounded-xl p-5 mb-8">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold text-slate-900 dark:text-white">{t('global.matrixTitle')}</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-semibold text-slate-900 dark:text-white">{t('global.matrixTitle')}</h2>
+            <HelpTooltip title="Matrice projets × IA">
+              Cette table compare les projets et les modèles IA. Le pourcentage donne la visibilité, et le ratio sous le badge indique combien de réponses ont réellement cité la marque.
+            </HelpTooltip>
+          </div>
           <button onClick={exportCsv} className="btn-ghost inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-all duration-200 text-xs">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
             <span>{t('global.export')}</span>

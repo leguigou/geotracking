@@ -5,6 +5,7 @@ import TrendChart from '../components/TrendChart';
 import PromptMatrix from '../components/PromptMatrix';
 import InspectModal from '../components/InspectModal';
 import ScanProgressGrid from '../components/ScanProgressGrid';
+import HelpTooltip from '../components/HelpTooltip';
 import { useProject, usePrompts } from '../hooks/useApi';
 import { api, type LatestResultsData, type HistoryEntry, type OpenRouterModel, type ScanStatusData } from '../lib/api';
 import { modelDisplay } from '../lib/modelMap';
@@ -322,11 +323,11 @@ export default function DashboardProject() {
       </div>
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6">
+        <div className="flex min-w-0 items-center gap-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{project?.name ?? 'Projet'}</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-0.5">
+            <p className="text-sm text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-1.5 mt-0.5">
               <span>{t('project.url')}</span> : <span className="font-mono text-xs text-slate-700 dark:text-slate-300">{project?.target_url ?? '—'}</span>
               <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-600" />
               <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${
@@ -337,13 +338,13 @@ export default function DashboardProject() {
                 {project?.is_active !== false ? t('project.active') : 'En pause'}
               </span>
             </p>
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-400">
               Scan automatique : {project?.frequency ?? '—'}
               {project?.last_scheduled_scan_at && ` · dernier lancement ${new Date(project.last_scheduled_scan_at).toLocaleString('fr-FR')}`}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
           {/* Action menu */}
           <div className="relative">
             <button
@@ -449,7 +450,7 @@ export default function DashboardProject() {
           <div className="flex items-center gap-2">
             {/* Sélecteur de modèle pour le scan */}
             <select
-              className="input-field text-xs py-2 w-auto"
+                className="input-field min-w-0 flex-1 text-xs py-2 sm:w-auto sm:flex-none"
               value={scanModel}
               onChange={(e) => setScanModel(e.target.value)}
               disabled={scanning}
@@ -462,7 +463,7 @@ export default function DashboardProject() {
 
             {/* Bouton Scan / Annuler */}
             <button
-              className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 active:scale-[.97] text-xs ${
+              className={`inline-flex flex-1 items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 active:scale-[.97] text-xs sm:flex-none ${
                 scanning
                   ? 'bg-red-600 text-white hover:bg-red-500 shadow-lg shadow-red-500/20'
                   : 'bg-gradient-to-r from-blue-600 to-violet-600 text-white hover:from-blue-500 hover:to-violet-500 shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30'
@@ -541,9 +542,14 @@ export default function DashboardProject() {
       {history && history.length > 0 && (
         <div className="glass-card rounded-xl p-5 mb-8">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-              Historique des scans ({history.length})
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+                Historique des scans ({history.length})
+              </h2>
+              <HelpTooltip title="Historique des scans">
+                Chaque ligne correspond à une campagne de questions envoyées aux modèles IA. Si plusieurs lignes apparaissent très rapprochées, c'est généralement qu'un scan manuel ou planifié a été lancé plusieurs fois.
+              </HelpTooltip>
+            </div>
             <button
               onClick={() => { setShowScanHistory(true) }}
               className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
@@ -642,7 +648,12 @@ export default function DashboardProject() {
         <div className="glass-card rounded-xl p-5 mb-8">
           <div className="flex items-start justify-between gap-4 mb-4">
             <div>
-              <h2 className="text-base font-semibold text-slate-900 dark:text-white">Prochaines actions</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-semibold text-slate-900 dark:text-white">Prochaines actions</h2>
+                <HelpTooltip title="Prochaines actions">
+                  Ce résumé traduit les résultats techniques en priorités simples : mentions manquantes, erreurs à corriger et concurrents à surveiller.
+                </HelpTooltip>
+              </div>
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 Lecture rapide du dernier scan pour savoir quoi traiter en premier.
               </p>
@@ -690,9 +701,14 @@ export default function DashboardProject() {
       )}
 
       {/* SOV Cards */}
-      <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
-        SOV : part des réponses où la marque ou le domaine du projet est cité.
-      </p>
+      <div className="mb-3 flex items-start gap-2 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-500 dark:border-slate-700/50 dark:bg-slate-800/50 dark:text-slate-400">
+        <HelpTooltip title="Qu'est-ce que le SOV ?">
+          Le SOV est la part de réponses où ta marque ou ton domaine apparaît. 2/6 veut dire que la marque est citée dans 2 réponses sur 6. C'est souvent plus parlant que le pourcentage seul.
+        </HelpTooltip>
+        <p>
+          SOV : part des réponses où la marque ou le domaine du projet est cité. Le ratio sous chaque carte indique les mentions réelles, par exemple 2/6.
+        </p>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
         {activeLlmDefs.length > 0 ? activeLlmDefs.map((llm) => {
           const sovVal = overall[llm.id];
@@ -729,7 +745,12 @@ export default function DashboardProject() {
       {/* Trend Chart */}
       <div className="glass-card rounded-xl p-5 mb-8">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold text-slate-900 dark:text-white">{t('project.trendTitle', { name: project?.name ?? '' })}</h2>
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+            <h2 className="text-base font-semibold text-slate-900 dark:text-white">{t('project.trendTitle', { name: project?.name ?? '' })}</h2>
+            <HelpTooltip title="Lire la tendance">
+              La courbe compare les scans terminés. Un point à 0% signifie que des réponses ont bien été analysées mais que la marque n'est pas sortie. Une absence de point signifie qu'il n'y avait pas de donnée.
+            </HelpTooltip>
+          </div>
           <select value={period} onChange={(e) => setPeriod(e.target.value)} className="text-xs bg-transparent border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-slate-600 dark:text-slate-400 outline-none">
             <option value="last7d">{t('project.last7d')}</option>
             <option value="last30d">{t('project.last30d')}</option>
@@ -742,7 +763,12 @@ export default function DashboardProject() {
       {/* Prompt Matrix */}
       <div className="glass-card rounded-xl p-5">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold text-slate-900 dark:text-white">{t('project.promptMatrix')}</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-semibold text-slate-900 dark:text-white">{t('project.promptMatrix')}</h2>
+            <HelpTooltip title="Matrice des prompts">
+              Chaque ligne est une question suivie. Chaque colonne est un modèle IA. Vert signifie que la marque est citée, rouge qu'elle ne l'est pas, orange qu'une erreur est survenue.
+            </HelpTooltip>
+          </div>
           <div className="flex items-center gap-3 text-xs">
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /> {t('project.mentioned')}</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /> {t('project.absent')}</span>

@@ -176,6 +176,30 @@ export interface HistoryEntry {
   [key: string]: unknown
 }
 
+export interface ScanResultLogEntry {
+  id: string
+  batch_id?: string | null
+  project_id: string
+  prompt_id: string
+  prompt_text?: string | null
+  model: string
+  has_url: boolean
+  has_brand: boolean
+  rank?: number | null
+  latency_ms?: number | null
+  tokens_used?: number | null
+  cost?: number | null
+  error?: string | null
+  scanned_at: string
+  response_text?: string | null
+  competitors?: Array<{
+    name: string
+    url: string | null
+    rank: number | null
+    is_target?: boolean
+  }>
+}
+
 // ── Auth ───────────────────────────────────────────────────────────
 export const login = (email: string, password: string) =>
   client.post<{ access_token: string; refresh_token: string }>("/auth/login", { email, password }).then((r) => r.data)
@@ -240,8 +264,10 @@ export const cancelScan = (projectId: string | number) =>
   client.post<{ status: string; cancelled: number }>(`/projects/${projectId}/cancel-scan`).then((r) => r.data);
 
 // ── Results ─────────────────────────────────────────────────────────
-export const getResults = (projectId: string | number) =>
-  client.get<HistoryEntry[]>(`/projects/${projectId}/results`).then((r) => r.data)
+export const getResults = (projectId: string | number, limit = 500, offset = 0) =>
+  client.get<ScanResultLogEntry[]>(`/projects/${projectId}/results`, {
+    params: { limit, offset },
+  }).then((r) => r.data)
 
 export const getLatestResults = (projectId: string | number) =>
   client.get<LatestResultsData>(`/projects/${projectId}/results/latest`).then((r) => r.data)
@@ -275,6 +301,9 @@ export interface ScanStatusData {
       rank: number | null
       error: string | null
       latency_ms: number | null
+      tokens_used?: number | null
+      cost?: number | null
+      scanned_at?: string | null
       response_snippet: string | null
       competitors: Array<{
         name: string

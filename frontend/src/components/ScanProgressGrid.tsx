@@ -2,6 +2,12 @@ import { useState } from 'react';
 import { modelDisplay } from '../lib/modelMap';
 import type { ScanStatusData } from '../lib/api';
 
+const formatDate = (value?: string | null) =>
+  value ? new Date(value).toLocaleString('fr-FR') : '—';
+
+const formatCost = (value?: number | null) =>
+  value == null ? '—' : `$${value.toFixed(6)}`;
+
 /* ── Cell status icons ──────────────────────────────────────────── */
 
 function cellIcon(status: string, hasUrl: boolean, hasBrand: boolean) {
@@ -241,12 +247,40 @@ export default function ScanProgressGrid({ matrix, models, batchStatus }: ScanPr
                   {/* Collapsible content */}
                   {isExpanded && (
                     <div className="p-4 space-y-4">
+                      <div>
+                        <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                          Prompt envoyé
+                        </p>
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-700/50 dark:bg-slate-900/50 dark:text-slate-300">
+                          {row.prompt_text}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <Metric label="Modèle exact" value={modelId} mono />
+                        <Metric label="Date complète" value={formatDate(cell.scanned_at)} />
+                        <Metric label="Tokens" value={cell.tokens_used == null ? '—' : String(cell.tokens_used)} />
+                        <Metric label="Coût" value={formatCost(cell.cost)} />
+                      </div>
+
                       {/* Response text */}
                       {cell.response_snippet && (
                         <div>
-                          <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
-                            Réponse du modèle
-                          </p>
+                          <div className="mb-1.5 flex items-center justify-between gap-3">
+                            <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                              Réponse complète du modèle
+                            </p>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                navigator.clipboard.writeText(cell.response_snippet || '');
+                              }}
+                              className="text-xs text-blue-600 hover:underline dark:text-blue-400"
+                            >
+                              Copier
+                            </button>
+                          </div>
                           <pre className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-3 text-xs leading-relaxed text-slate-700 dark:text-slate-300 font-mono whitespace-pre-wrap max-h-60 overflow-y-auto border border-slate-200 dark:border-slate-700/50">
                             {cell.response_snippet}
                           </pre>
@@ -343,6 +377,17 @@ export default function ScanProgressGrid({ matrix, models, batchStatus }: ScanPr
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function Metric({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="min-w-0 bg-slate-50 dark:bg-slate-900/30 rounded-lg p-2.5 border border-slate-200 dark:border-slate-700/30">
+      <p className="text-[10px] text-slate-400">{label}</p>
+      <p className={`truncate text-sm font-bold text-slate-900 dark:text-white ${mono ? 'font-mono text-xs' : ''}`} title={value}>
+        {value}
+      </p>
     </div>
   );
 }

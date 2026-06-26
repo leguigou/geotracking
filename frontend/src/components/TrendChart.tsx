@@ -35,10 +35,12 @@ interface TrendChartProps {
 export default function TrendChart({ labels, datasets, height = 260, chartId }: TrendChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartRef = useRef<Chart | null>(null);
+  const hasUsableData = datasets.some((dataset) => dataset.data.some((value) => value !== null && value !== undefined));
 
   useEffect(() => {
     if (!canvasRef.current) return;
     if (chartRef.current) chartRef.current.destroy();
+    if (!hasUsableData) return;
 
     const isDark = document.documentElement.classList.contains('dark');
     const textColor = isDark ? '#94a3b8' : '#64748b';
@@ -113,10 +115,18 @@ export default function TrendChart({ labels, datasets, height = 260, chartId }: 
     return () => {
       if (chartRef.current) chartRef.current.destroy();
     };
-  }, [labels, datasets]);
+  }, [labels, datasets, hasUsableData]);
 
   return (
     <div className="relative" style={{ height }}>
+      {!hasUsableData && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-6 text-center dark:border-slate-700 dark:bg-slate-900/40">
+          <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Pas encore assez de données</p>
+          <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+            Lance au moins un scan terminé pour voir une tendance. Un score à 0% sera affiché comme une vraie donnée si des réponses ont bien été analysées.
+          </p>
+        </div>
+      )}
       <canvas ref={canvasRef} id={chartId} />
     </div>
   );

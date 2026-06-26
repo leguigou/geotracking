@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.database import async_session
 from app.models.project import Project
-from app.services.scheduler import enqueue_due_projects
+from app.services.scheduler import _as_utc, enqueue_due_projects
 
 
 def test_due_weekly_project_is_scheduled(project, monkeypatch):
@@ -24,11 +24,13 @@ def test_due_weekly_project_is_scheduled(project, monkeypatch):
             current.last_scheduled_scan_at = now - timedelta(days=8)
             await db.commit()
         count = await enqueue_due_projects(now)
+        second_count = await enqueue_due_projects(now + timedelta(minutes=1))
         async with async_session() as db:
             current = await db.get(Project, uuid.UUID(project["id"]))
-            return count, current.last_scheduled_scan_at
+            return count, second_count, current.last_scheduled_scan_at
 
-    count, scheduled_at = asyncio.run(run())
+    count, second_count, scheduled_at = asyncio.run(run())
     assert count >= 1
+    assert second_count == 0
     assert project["id"] in calls
-    assert scheduled_at is not None
+    assert _as_utc(scheduled_at) == now

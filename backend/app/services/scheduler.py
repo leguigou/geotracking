@@ -59,17 +59,23 @@ async def enqueue_due_projects(now: datetime | None = None) -> int:
 
             # Optimistic lock: update only if still at the same baseline.
             async with async_session() as db:
+                timestamp_condition = (
+                    Project.last_scheduled_scan_at.is_(None)
+                    if project.last_scheduled_scan_at is None
+                    else Project.last_scheduled_scan_at == project.last_scheduled_scan_at
+                )
                 result = await db.execute(
                     update(Project)
                     .where(
                         Project.id == project.id,
-                        Project.last_scheduled_scan_at == project.last_scheduled_scan_at,
+                        timestamp_condition,
                     )
                     .values(last_scheduled_scan_at=now)
                 )
                 if result.rowcount == 0:
                     # Another instance already claimed this project → skip.
                     continue
+                await db.commit()
 
             try:
                 await enqueue_scan(str(project.id))

@@ -1,13 +1,20 @@
 import Badge from './Badge';
+import type { ProviderStats } from '../lib/api';
 
 interface ProjectRow {
   name: string;
   chatgpt: number | null;
+  chatgptStats?: ProviderStats | null;
   claude: number | null;
+  claudeStats?: ProviderStats | null;
   perplexity: number | null;
+  perplexityStats?: ProviderStats | null;
   gemini: number | null;
+  geminiStats?: ProviderStats | null;
   grok: number | null;
+  grokStats?: ProviderStats | null;
   deepseek: number | null;
+  deepseekStats?: ProviderStats | null;
   sovAvg: number;
   onClick?: () => void;
 }
@@ -16,11 +23,15 @@ interface ProjectMatrixProps {
   projects: ProjectRow[];
 }
 
-function sovBadge(val: number | null) {
-  if (val == null) return <Badge variant="slate">N/A</Badge>;
-  if (val >= 30) return <Badge variant="emerald">{val}%</Badge>;
-  if (val >= 10) return <Badge variant="amber">{val}%</Badge>;
-  return <Badge variant="red">{val}%</Badge>;
+function sovBadge(val: number | null, stats?: ProviderStats | null) {
+  if (val == null || !stats) return <Badge variant="slate">N/A</Badge>;
+  const variant: 'emerald' | 'amber' | 'red' = val >= 30 ? 'emerald' : val >= 10 ? 'amber' : 'red';
+  return (
+    <div className="inline-flex flex-col items-start gap-1">
+      <Badge variant={variant}>{val}%</Badge>
+      <span className="text-[10px] text-slate-400">{stats.mentions}/{stats.total}</span>
+    </div>
+  );
 }
 
 export default function ProjectMatrix({ projects }: ProjectMatrixProps) {
@@ -47,12 +58,12 @@ export default function ProjectMatrix({ projects }: ProjectMatrixProps) {
               className="border-t border-slate-100 dark:border-slate-700/50 transition-colors hover:bg-slate-50/50 dark:hover:bg-slate-800/30 cursor-pointer"
             >
               <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{p.name}</td>
-              <td className="px-4 py-3">{sovBadge(p.chatgpt)}</td>
-              <td className="px-4 py-3">{sovBadge(p.claude)}</td>
-              <td className="px-4 py-3">{sovBadge(p.perplexity)}</td>
-              <td className="px-4 py-3">{sovBadge(p.gemini)}</td>
-              <td className="px-4 py-3">{sovBadge(p.grok)}</td>
-              <td className="px-4 py-3">{sovBadge(p.deepseek)}</td>
+              <td className="px-4 py-3">{sovBadge(p.chatgpt, p.chatgptStats)}</td>
+              <td className="px-4 py-3">{sovBadge(p.claude, p.claudeStats)}</td>
+              <td className="px-4 py-3">{sovBadge(p.perplexity, p.perplexityStats)}</td>
+              <td className="px-4 py-3">{sovBadge(p.gemini, p.geminiStats)}</td>
+              <td className="px-4 py-3">{sovBadge(p.grok, p.grokStats)}</td>
+              <td className="px-4 py-3">{sovBadge(p.deepseek, p.deepseekStats)}</td>
               <td className="px-4 py-3 text-right font-semibold text-slate-900 dark:text-white">{p.sovAvg}%</td>
             </tr>
           ))}

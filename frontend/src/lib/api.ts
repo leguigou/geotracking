@@ -128,6 +128,15 @@ export interface LlmResult {
   [key: string]: unknown
 }
 
+export interface ProviderStats {
+  sov: number
+  mentions: number
+  total: number
+  failed?: number
+  url_found?: number
+  brand_found?: number
+}
+
 export interface LatestResultsData {
   batch: {
     id: string
@@ -139,6 +148,7 @@ export interface LatestResultsData {
     completed_at?: string | null
   }
   overall: Record<string, number>
+  provider_stats?: Record<string, ProviderStats>
   prompts: LlmResult[]
   scan_date: string
   results: Array<Record<string, unknown>>
@@ -158,6 +168,7 @@ export interface HistoryEntry {
   scan_date: string
   status?: string
   failed_jobs?: number
+  provider_stats?: Record<string, ProviderStats>
   chatgpt?: number
   claude?: number
   perplexity?: number
@@ -318,10 +329,11 @@ export interface DashboardOverview {
     is_active: boolean
     prompt_count: number
     overall: Record<string, number>
+    provider_stats?: Record<string, ProviderStats>
     sov_avg?: number | null
     batch: { id: string; status: string; failed_jobs: number; scan_date: string } | null
   }>
-  trend: Array<{ date: string; [key: string]: string | number }>
+  trend: Array<{ date: string; provider_stats?: Record<string, ProviderStats>; [key: string]: unknown }>
   alerts?: Array<{
     severity: "info" | "warning" | "critical"
     project_id: string

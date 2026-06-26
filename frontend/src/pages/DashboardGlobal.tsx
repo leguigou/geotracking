@@ -6,6 +6,8 @@ import TrendChart from '../components/TrendChart';
 import ProjectMatrix from '../components/ProjectMatrix';
 import { api, type DashboardOverview } from '../lib/api';
 
+const providers = ['chatgpt', 'claude', 'perplexity', 'gemini', 'grok', 'deepseek'] as const;
+
 export default function DashboardGlobal() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -85,11 +87,17 @@ export default function DashboardGlobal() {
   const matrixProjects = projectsList.map((p) => ({
     name: p.name,
     chatgpt: p.overall.chatgpt ?? null,
+    chatgptStats: p.provider_stats?.chatgpt ?? null,
     claude: p.overall.claude ?? null,
+    claudeStats: p.provider_stats?.claude ?? null,
     perplexity: p.overall.perplexity ?? null,
+    perplexityStats: p.provider_stats?.perplexity ?? null,
     gemini: p.overall.gemini ?? null,
+    geminiStats: p.provider_stats?.gemini ?? null,
     grok: p.overall.grok ?? null,
+    grokStats: p.provider_stats?.grok ?? null,
     deepseek: p.overall.deepseek ?? null,
+    deepseekStats: p.provider_stats?.deepseek ?? null,
     sovAvg: Math.round(Object.values(p.overall).reduce((a, b) => a + b, 0) /
       Math.max(1, Object.keys(p.overall).length)),
     onClick: () => navigate(`/project/${p.id}`),
@@ -98,20 +106,30 @@ export default function DashboardGlobal() {
   const globalHistory = overview?.trend ?? [];
   const chartLabels = globalHistory.map((entry) => new Date(entry.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }));
   const chartDatasets = [
-    { label: 'ChatGPT', data: globalHistory.map((entry) => Number(entry.chatgpt ?? 0)), borderColor: '#3b82f6' },
-    { label: 'Claude', data: globalHistory.map((entry) => Number(entry.claude ?? 0)), borderColor: '#8b5cf6' },
-    { label: 'Perplexity', data: globalHistory.map((entry) => Number(entry.perplexity ?? 0)), borderColor: '#10b981' },
-    { label: 'Gemini', data: globalHistory.map((entry) => Number(entry.gemini ?? 0)), borderColor: '#f59e0b' },
-    { label: 'Grok', data: globalHistory.map((entry) => Number(entry.grok ?? 0)), borderColor: '#0ea5e9' },
-    { label: 'DeepSeek', data: globalHistory.map((entry) => Number(entry.deepseek ?? 0)), borderColor: '#f97316' },
-  ];
+    { key: 'chatgpt', label: 'ChatGPT', borderColor: '#3b82f6' },
+    { key: 'claude', label: 'Claude', borderColor: '#8b5cf6' },
+    { key: 'perplexity', label: 'Perplexity', borderColor: '#10b981' },
+    { key: 'gemini', label: 'Gemini', borderColor: '#f59e0b' },
+    { key: 'grok', label: 'Grok', borderColor: '#0ea5e9' },
+    { key: 'deepseek', label: 'DeepSeek', borderColor: '#f97316' },
+  ].map((provider) => ({
+    label: provider.label,
+    data: globalHistory.map((entry) => {
+      const stats = entry.provider_stats?.[provider.key];
+      return stats ? stats.sov : null;
+    }),
+    pointMeta: globalHistory.map((entry) => entry.provider_stats?.[provider.key] ?? null),
+    borderColor: provider.borderColor,
+  }));
 
   const exportCsv = () => {
-    const providers = ['chatgpt', 'claude', 'perplexity', 'gemini', 'grok', 'deepseek'];
     const rows = [
       ['Projet', ...providers, 'SOV moyenne'],
       ...projectsList.map((project) => {
-        const values = providers.map((provider) => project.overall[provider] ?? 'N/A');
+        const values = providers.map((provider) => {
+          const stats = project.provider_stats?.[provider];
+          return stats ? `${stats.sov}% (${stats.mentions}/${stats.total})` : 'N/A';
+        });
         const available = Object.values(project.overall);
         const average = available.length ? Math.round(available.reduce((sum, value) => sum + value, 0) / available.length) : 0;
         return [project.name, ...values, average];

@@ -76,10 +76,20 @@ class SOVStats(BaseModel):
     average_rank: Optional[float] = None
 
 
+class ProviderStats(BaseModel):
+    sov: float
+    mentions: int
+    total: int
+    failed: int = 0
+    url_found: int = 0
+    brand_found: int = 0
+
+
 class LatestScanResponse(BaseModel):
     batch: ScanBatchResponse
     scan_date: datetime
     overall: dict[str, float]
+    provider_stats: dict[str, ProviderStats]
     prompts: list[dict]
     results: list[ScanResultResponse]
     sov: SOVStats
@@ -327,17 +337,25 @@ def _summarise_results(
     results: list[ScanResult],
     prompts_by_id: dict,
     project: Project | None = None,
-) -> tuple[dict, list, SOVStats]:
+) -> tuple[dict, dict, list, SOVStats]:
     provider_groups: dict[str, list[ScanResult]] = {}
     prompt_groups: dict[uuid.UUID, list[ScanResult]] = {}
     for result in results:
         provider_groups.setdefault(model_provider_key(result.model), []).append(result)
         prompt_groups.setdefault(result.prompt_id, []).append(result)
 
-    overall = {
-        provider: calculate_sov(sum(1 for item in items if item.has_url or item.has_brand), len(items))
+    provider_stats = {
+        provider: {
+            "sov": calculate_sov(sum(1 for item in items if item.has_url or item.has_brand), len(items)),
+            "mentions": sum(1 for item in items if item.has_url or item.has_brand),
+            "total": len(items),
+            "failed": sum(1 for item in items if item.error),
+            "url_found": sum(1 for item in items if item.has_url),
+            "brand_found": sum(1 for item in items if item.has_brand),
+        }
         for provider, items in provider_groups.items()
     }
+    overall = {provider: stats["sov"] for provider, stats in provider_stats.items()}
     prompts = []
     for prompt_id, items in prompt_groups.items():
         prompt = prompts_by_id.get(prompt_id)
@@ -387,7 +405,7 @@ def _summarise_results(
         sov_brand=calculate_sov(brand_ok, total),
         average_rank=round(sum(ranks) / len(ranks), 1) if ranks else None,
     )
-    return overall, prompts, sov
+    return overall, provider_stats, prompts, sov
 
 
 @router.get("/{project_id}/results/latest", response_model=LatestScanResponse)
@@ -415,11 +433,12 @@ async def get_latest_results(
         prompt_result = await db.execute(select(Prompt).where(Prompt.id.in_(prompt_ids)))
         prompts_by_id = {prompt.id: prompt for prompt in prompt_result.scalars().all()}
 
-    overall, prompts, sov = _summarise_results(results, prompts_by_id, project)
+    overall, provider_stats, prompts, sov = _summarise_results(results, prompts_by_id, project)
     return LatestScanResponse(
         batch=batch,
         scan_date=batch.completed_at or batch.created_at,
         overall=overall,
+        provider_stats=provider_stats,
         prompts=prompts,
         results=results,
         sov=sov,
@@ -452,13 +471,14 @@ async def get_scan_history(
     history = []
     for batch in reversed(batches):
         results = results_by_batch[batch.id]
-        overall, _, _ = _summarise_results(results, {})
+        overall, provider_stats, _, _ = _summarise_results(results, {})
         history.append(
             {
                 "batch_id": str(batch.id),
                 "scan_date": (batch.completed_at or batch.created_at).isoformat(),
                 "status": batch.status,
                 "failed_jobs": batch.failed_jobs,
+                "provider_stats": provider_stats,
                 **overall,
             }
         )

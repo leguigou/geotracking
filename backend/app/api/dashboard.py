@@ -18,11 +18,22 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
 def _provider_sov(results: list[ScanResult]) -> dict[str, float]:
+    return {provider: stats["sov"] for provider, stats in _provider_stats(results).items()}
+
+
+def _provider_stats(results: list[ScanResult]) -> dict[str, dict]:
     grouped: dict[str, list[ScanResult]] = defaultdict(list)
     for result in results:
         grouped[model_provider_key(result.model)].append(result)
     return {
-        provider: calculate_sov(sum(1 for item in items if item.has_url or item.has_brand), len(items))
+        provider: {
+            "sov": calculate_sov(sum(1 for item in items if item.has_url or item.has_brand), len(items)),
+            "mentions": sum(1 for item in items if item.has_url or item.has_brand),
+            "total": len(items),
+            "failed": sum(1 for item in items if item.error),
+            "url_found": sum(1 for item in items if item.has_url),
+            "brand_found": sum(1 for item in items if item.has_brand),
+        }
         for provider, items in grouped.items()
     }
 
@@ -138,7 +149,8 @@ async def dashboard_overview(
     for project in projects:
         batch = latest_by_project.get(project.id)
         latest_results = results_by_batch.get(batch.id, []) if batch else []
-        overall = _provider_sov(latest_results) if batch else {}
+        provider_stats = _provider_stats(latest_results) if batch else {}
+        overall = {provider: stats["sov"] for provider, stats in provider_stats.items()}
         all_latest_sov.extend(overall.values())
         failed_jobs += batch.failed_jobs if batch else 0
         for key, entry in _competitor_counts(project, latest_results).items():
@@ -198,6 +210,7 @@ async def dashboard_overview(
                 "is_active": project.is_active,
                 "prompt_count": int(prompt_counts.get(project.id, 0)),
                 "overall": overall,
+                "provider_stats": provider_stats,
                 "sov_avg": project_avg_sov,
                 "batch": {
                     "id": str(batch.id),
@@ -208,19 +221,30 @@ async def dashboard_overview(
             }
         )
 
-    daily_values: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+    daily_values: dict[str, dict[str, dict[str, int]]] = defaultdict(
+        lambda: defaultdict(lambda: {"mentions": 0, "total": 0, "failed": 0})
+    )
     for batch in relevant_batches:
         if batch.status != "completed":
             continue
         date_key = (batch.completed_at or batch.created_at).date().isoformat()
-        for provider, value in _provider_sov(results_by_batch.get(batch.id, [])).items():
-            daily_values[date_key][provider].append(value)
+        for provider, stats in _provider_stats(results_by_batch.get(batch.id, [])).items():
+            daily_values[date_key][provider]["mentions"] += stats["mentions"]
+            daily_values[date_key][provider]["total"] += stats["total"]
+            daily_values[date_key][provider]["failed"] += stats["failed"]
 
     trend = []
     for date_key in sorted(daily_values):
-        row = {"date": date_key}
-        for provider, values in daily_values[date_key].items():
-            row[provider] = round(sum(values) / len(values), 1)
+        row = {"date": date_key, "provider_stats": {}}
+        for provider, stats in daily_values[date_key].items():
+            sov = calculate_sov(stats["mentions"], stats["total"])
+            row[provider] = sov
+            row["provider_stats"][provider] = {
+                "sov": sov,
+                "mentions": stats["mentions"],
+                "total": stats["total"],
+                "failed": stats["failed"],
+            }
         trend.append(row)
 
     return {

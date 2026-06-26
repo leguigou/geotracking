@@ -14,10 +14,15 @@ Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryS
 
 interface TrendDataset {
   label: string;
-  data: number[];
+  data: Array<number | null>;
   borderColor: string;
   backgroundColor?: string;
   borderDash?: number[];
+  pointMeta?: Array<{
+    mentions?: number;
+    total?: number;
+    failed?: number;
+  } | null>;
 }
 
 interface TrendChartProps {
@@ -57,6 +62,7 @@ export default function TrendChart({ labels, datasets, height = 260, chartId }: 
           pointHoverRadius: 5,
           borderWidth: 2,
           borderDash: ds.borderDash,
+          spanGaps: false,
         })),
       },
       options: {
@@ -75,6 +81,18 @@ export default function TrendChart({ labels, datasets, height = 260, chartId }: 
             cornerRadius: 8,
             displayColors: true,
             boxPadding: 4,
+            callbacks: {
+              label: (context) => {
+                const dataset = datasets[context.datasetIndex];
+                const value = context.parsed.y;
+                const meta = dataset?.pointMeta?.[context.dataIndex];
+                if (!meta || meta.total == null) {
+                  return `${context.dataset.label}: ${Number.isFinite(value) ? `${value}%` : 'N/A'}`;
+                }
+                const failed = meta.failed ? ` · ${meta.failed} erreur${meta.failed > 1 ? 's' : ''}` : '';
+                return `${context.dataset.label}: ${value}% (${meta.mentions ?? 0}/${meta.total} mentions${failed})`;
+              },
+            },
           },
         },
         scales: {

@@ -277,9 +277,10 @@ export default function DashboardProject() {
     if (!history?.length) return [];
     return activeLlmDefs.map((llm) => ({
       label: llm.label,
-      data: history.map((h) => Number(h[llm.id] ?? 0)),
+      data: history.map((h) => h.provider_stats?.[llm.id]?.sov ?? null),
+      pointMeta: history.map((h) => h.provider_stats?.[llm.id] ?? null),
       borderColor: llm.chartColor,
-      borderDash: history.every((h) => Number(h[llm.id] ?? 0) === 0) ? [4, 3] as number[] : undefined,
+      borderDash: history.every((h) => !h.provider_stats?.[llm.id] || h.provider_stats[llm.id].sov === 0) ? [4, 3] as number[] : undefined,
     }));
   }, [history, activeLlmDefs]);
 
@@ -557,7 +558,7 @@ export default function DashboardProject() {
               const date = new Date(entry.scan_date);
               const dateStr = date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
               const timeStr = date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-              const sovKeys = Object.keys(entry).filter(k => !['batch_id', 'scan_date', 'status', 'failed_jobs'].includes(k));
+              const sovKeys = Object.keys(entry).filter(k => !['batch_id', 'scan_date', 'status', 'failed_jobs', 'provider_stats'].includes(k));
               return (
                 <div
                   key={batchId}
@@ -602,6 +603,7 @@ export default function DashboardProject() {
                       {sovKeys.map(key => (
                         <span key={key} className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400">
                           {key.split('/').pop()}: {Number(entry[key]) || 0}%
+                          {entry.provider_stats?.[key] && ` (${entry.provider_stats[key].mentions}/${entry.provider_stats[key].total})`}
                         </span>
                       ))}
                       <svg className={`w-4 h-4 text-slate-400 transition-transform ${isSelected ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -694,6 +696,7 @@ export default function DashboardProject() {
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
         {activeLlmDefs.length > 0 ? activeLlmDefs.map((llm) => {
           const sovVal = overall[llm.id];
+          const stats = latest?.provider_stats?.[llm.id];
           const hasData = sovVal !== undefined;
           return (
             <div key={llm.id} className="rounded-xl p-5 transition-all duration-200 cursor-default bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/50 hover:shadow-md">
@@ -707,10 +710,15 @@ export default function DashboardProject() {
               <div className="flex items-baseline gap-1">
                 <span className="text-3xl font-bold text-slate-900 dark:text-white num">{loadingLatest ? '…' : hasData ? `${sovVal}%` : '—'}</span>
               </div>
+              {stats && (
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-1">
+                  {stats.mentions}/{stats.total} réponse{stats.total > 1 ? 's' : ''} citent la marque
+                </p>
+              )}
               <div className="mt-3 w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5">
                 <div className={`${llm.barColor} h-1.5 rounded-full transition-all duration-500`} style={{ width: `${hasData ? Math.max(sovVal, 2) : 0}%` }} />
               </div>
-              <p className="text-xs text-slate-400 mt-2">{hasData ? 'Dernier scan' : 'En attente'}</p>
+              <p className="text-xs text-slate-400 mt-2">{hasData ? 'Dernier scan' : 'Aucune donnée scannée'}</p>
             </div>
           );
         }) : (

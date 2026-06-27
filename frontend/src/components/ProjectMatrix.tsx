@@ -1,70 +1,66 @@
 import Badge from './Badge';
 import type { ProviderStats } from '../lib/api';
+import { modelDisplay } from '../lib/modelMap';
 
-interface ProjectRow {
+export interface ProjectMatrixRow {
+  id: string;
   name: string;
-  chatgpt: number | null;
-  chatgptStats?: ProviderStats | null;
-  claude: number | null;
-  claudeStats?: ProviderStats | null;
-  perplexity: number | null;
-  perplexityStats?: ProviderStats | null;
-  gemini: number | null;
-  geminiStats?: ProviderStats | null;
-  grok: number | null;
-  grokStats?: ProviderStats | null;
-  deepseek: number | null;
-  deepseekStats?: ProviderStats | null;
-  sovAvg: number;
+  stats: Record<string, ProviderStats>;
+  sovAvg: number | null;
   onClick?: () => void;
 }
 
 interface ProjectMatrixProps {
-  projects: ProjectRow[];
+  projects: ProjectMatrixRow[];
+  models: string[];
 }
 
-function sovBadge(val: number | null, stats?: ProviderStats | null) {
-  if (val == null || !stats) return <Badge variant="slate">N/A</Badge>;
-  const variant: 'emerald' | 'amber' | 'red' = val >= 30 ? 'emerald' : val >= 10 ? 'amber' : 'red';
+function sovBadge(stats?: ProviderStats) {
+  if (!stats) return <Badge variant="slate">N/A</Badge>;
+  const variant: 'emerald' | 'amber' | 'red' = stats.sov >= 30 ? 'emerald' : stats.sov >= 10 ? 'amber' : 'red';
   return (
     <div className="inline-flex flex-col items-start gap-1">
-      <Badge variant={variant}>{val}%</Badge>
+      <Badge variant={variant}>{stats.sov}%</Badge>
       <span className="text-[10px] text-slate-400">{stats.mentions}/{stats.total}</span>
     </div>
   );
 }
 
-export default function ProjectMatrix({ projects }: ProjectMatrixProps) {
+export default function ProjectMatrix({ projects, models }: ProjectMatrixProps) {
   return (
     <div className="table-wrap overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
-      <table className="geo-table w-full text-sm">
-        <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs font-semibold uppercase tracking-wider">
+      <table className="geo-table min-w-full text-sm">
+        <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:bg-slate-800/50 dark:text-slate-400">
           <tr>
-            <th className="px-4 py-3 text-left">Projet</th>
-            <th className="px-4 py-3 text-left">ChatGPT</th>
-            <th className="px-4 py-3 text-left">Claude</th>
-            <th className="px-4 py-3 text-left">Perplexity</th>
-            <th className="px-4 py-3 text-left">Gemini</th>
-            <th className="px-4 py-3 text-left">Grok</th>
-            <th className="px-4 py-3 text-left">DeepSeek</th>
-            <th className="px-4 py-3 text-right">SOV Moy.</th>
+            <th className="sticky left-0 z-10 min-w-48 bg-slate-50 px-4 py-3 text-left dark:bg-slate-800">Projet</th>
+            {models.map((modelId) => {
+              const display = modelDisplay(modelId);
+              return (
+                <th key={modelId} className="min-w-36 px-4 py-3 text-left normal-case" title={modelId}>
+                  <span className="block truncate">{display.label}</span>
+                  <span className="block truncate font-mono text-[9px] font-normal text-slate-400">{modelId}</span>
+                </th>
+              );
+            })}
+            <th className="min-w-24 px-4 py-3 text-right">SOV moy.</th>
           </tr>
         </thead>
         <tbody>
-          {projects.map((p, i) => (
+          {projects.map((project) => (
             <tr
-              key={i}
-              onClick={p.onClick}
-              className="border-t border-slate-100 dark:border-slate-700/50 transition-colors hover:bg-slate-50/50 dark:hover:bg-slate-800/30 cursor-pointer"
+              key={project.id}
+              onClick={project.onClick}
+              className="cursor-pointer border-t border-slate-100 transition-colors hover:bg-slate-50/50 dark:border-slate-700/50 dark:hover:bg-slate-800/30"
             >
-              <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{p.name}</td>
-              <td className="px-4 py-3">{sovBadge(p.chatgpt, p.chatgptStats)}</td>
-              <td className="px-4 py-3">{sovBadge(p.claude, p.claudeStats)}</td>
-              <td className="px-4 py-3">{sovBadge(p.perplexity, p.perplexityStats)}</td>
-              <td className="px-4 py-3">{sovBadge(p.gemini, p.geminiStats)}</td>
-              <td className="px-4 py-3">{sovBadge(p.grok, p.grokStats)}</td>
-              <td className="px-4 py-3">{sovBadge(p.deepseek, p.deepseekStats)}</td>
-              <td className="px-4 py-3 text-right font-semibold text-slate-900 dark:text-white">{p.sovAvg}%</td>
+              <td className="sticky left-0 z-10 bg-white px-4 py-3 font-medium text-slate-900 group-hover:bg-slate-50 dark:bg-slate-900 dark:text-white">
+                {project.name}
+              </td>
+              {models.map((modelId) => (
+                <td key={modelId} className="px-4 py-3">{sovBadge(project.stats[modelId])}</td>
+              ))}
+              <td className="px-4 py-3 text-right font-semibold text-slate-900 dark:text-white">
+                {project.sovAvg == null ? '—' : `${project.sovAvg}%`}
+              </td>
             </tr>
           ))}
         </tbody>

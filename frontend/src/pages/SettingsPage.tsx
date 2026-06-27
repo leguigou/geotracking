@@ -434,22 +434,29 @@ export default function SettingsPage() {
                 <span>Précis (0)</span>
                 <span>Créatif (1)</span>
               </div>
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                Cette valeur est envoyée à OpenRouter pour chaque scan lorsque le modèle sélectionné prend en charge la température.
+              </p>
             </div>
             {/* Fréquence */}
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                Fréquence de tracking
+                Fréquence automatique globale
               </label>
               <select
                 className="input-field"
                 value={frequency}
                 onChange={(e) => setFrequency(e.target.value)}
               >
+                <option value="disabled">Désactivée — scans manuels uniquement</option>
                 <option value="daily">Quotidien</option>
                 <option value="weekly">Hebdomadaire</option>
                 <option value="biweekly">Bi-hebdomadaire</option>
                 <option value="monthly">Mensuel</option>
               </select>
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                Ce choix est appliqué à tous les projets. Désactiver la fréquence n’empêche pas de lancer un scan manuellement.
+              </p>
             </div>
           </div>
 

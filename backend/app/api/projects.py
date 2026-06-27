@@ -3,7 +3,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from typing import List, Optional
@@ -184,12 +184,28 @@ class PromptUpdate(BaseModel):
     theme: Optional[str] = None
     is_active: Optional[bool] = None
 
+    @field_validator("text")
+    @classmethod
+    def clean_text(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Le texte du prompt ne peut pas être vide")
+        return cleaned
+
+    @field_validator("theme")
+    @classmethod
+    def clean_theme(cls, value: Optional[str]) -> Optional[str]:
+        return value.strip() or None if value is not None else None
+
 
 @router.patch("/{project_id}/prompts/{prompt_id}", response_model=PromptResponse)
 async def update_prompt(
     project_id: str,
     prompt_id: str,
     req: PromptUpdate,
+    current_user: User = Depends(get_current_user),
     org_id: str = Depends(get_current_organization),
     db: AsyncSession = Depends(get_db),
 ):
@@ -215,6 +231,15 @@ async def update_prompt(
 
     await db.flush()
     await db.refresh(prompt)
+    await log_action(
+        db,
+        current_user.organization_id,
+        current_user.id,
+        "prompt.updated",
+        "prompt",
+        str(prompt.id),
+        {"project_id": str(uid), "changes": update_data},
+    )
     return prompt
 
 

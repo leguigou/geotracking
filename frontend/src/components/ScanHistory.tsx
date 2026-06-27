@@ -42,7 +42,7 @@ export default function ScanHistory({ projectId, onClose }: Props) {
         if (cancelled) return;
         setResults(
           [...list].sort((a, b) =>
-            String(b.scanned_at ?? '').localeCompare(String(a.scanned_at ?? '')),
+            new Date(b.scanned_at).getTime() - new Date(a.scanned_at).getTime(),
           ),
         );
       } catch {
@@ -89,7 +89,7 @@ export default function ScanHistory({ projectId, onClose }: Props) {
           <div>
             <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Logs complets des scans</h3>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Déplie une ligne pour voir le prompt, la réponse complète, les métriques, l'erreur et les concurrents détectés.
+              Du plus récent au plus ancien. Déplie une ligne pour voir le prompt, la réponse complète, les métriques, l'erreur et les concurrents détectés.
             </p>
           </div>
           <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Fermer">

@@ -69,3 +69,26 @@ def test_recent_batch_prevents_scheduler_scan_storm(project, monkeypatch):
 
     assert asyncio.run(run()) == 0
     assert calls == []
+
+
+def test_disabled_frequency_never_schedules_automatic_scan(project, monkeypatch):
+    now = datetime.now(timezone.utc)
+    calls = []
+
+    async def fake_enqueue(project_id, specific_model=None):
+        calls.append(project_id)
+        return {"batch_id": str(uuid.uuid4()), "enqueued": 1}
+
+    monkeypatch.setattr("app.services.scheduler.enqueue_scan", fake_enqueue)
+
+    async def run():
+        async with async_session() as db:
+            current = await db.get(Project, uuid.UUID(project["id"]))
+            current.frequency = "disabled"
+            current.created_at = now - timedelta(days=365)
+            current.last_scheduled_scan_at = now - timedelta(days=365)
+            await db.commit()
+        return await enqueue_due_projects(now)
+
+    assert asyncio.run(run()) == 0
+    assert calls == []

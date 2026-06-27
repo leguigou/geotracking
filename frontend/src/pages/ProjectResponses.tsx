@@ -10,7 +10,6 @@ interface BatchDisplay {
   status: string
   /** modelId → sovUrl */
   models: Record<string, number>
-  totalResults: number
 }
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -69,11 +68,18 @@ export default function ProjectResponses() {
       // Convert history entries to batch displays
       const batchList: BatchDisplay[] = history.map((entry) => {
         const models: Record<string, number> = {}
-        let totalResults = 0
+        const metadataKeys = new Set([
+          'batch_id',
+          'scan_date',
+          'status',
+          'total_jobs',
+          'completed_jobs',
+          'failed_jobs',
+          'provider_stats',
+        ])
         for (const [key, val] of Object.entries(entry)) {
-          if (key !== 'batch_id' && key !== 'scan_date' && key !== 'status' && typeof val === 'number') {
+          if (!metadataKeys.has(key) && typeof val === 'number') {
             models[key] = val
-            totalResults++
           }
         }
         return {
@@ -81,7 +87,6 @@ export default function ProjectResponses() {
           label: `${formatDate(entry.scan_date)} à ${formatTime(entry.scan_date)}`,
           status: entry.status || 'unknown',
           models,
-          totalResults,
         }
       })
       setBatches(batchList)

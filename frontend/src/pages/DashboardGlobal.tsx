@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import StatsCard from '../components/StatsCard';
@@ -6,8 +6,10 @@ import TrendChart from '../components/TrendChart';
 import ProjectMatrix from '../components/ProjectMatrix';
 import HelpTooltip from '../components/HelpTooltip';
 import { api, type DashboardOverview } from '../lib/api';
+import { modelDisplay } from '../lib/modelMap';
 
-const providers = ['chatgpt', 'claude', 'perplexity', 'gemini', 'grok', 'deepseek'] as const;
+const MODEL_COLORS = ['#2563eb', '#7c3aed', '#059669', '#ea580c', '#db2777', '#0891b2', '#ca8a04', '#475569'];
+const MODEL_DASHES: Array<number[] | undefined> = [undefined, [7, 4], [2, 3], [10, 4, 2, 4]];
 
 export default function DashboardGlobal() {
   const { t } = useTranslation();
@@ -15,6 +17,7 @@ export default function DashboardGlobal() {
 
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
   const [loadingProjects, setLoadingProjects] = useState(true);
+  const [selectedTrendModel, setSelectedTrendModel] = useState('all');
 
   useEffect(() => {
     let cancelled = false;
@@ -24,7 +27,7 @@ export default function DashboardGlobal() {
     return () => { cancelled = true; };
   }, []);
 
-  const projectsList = overview?.projects ?? [];
+  const projectsList = useMemo(() => overview?.projects ?? [], [overview?.projects]);
   const totals = overview?.totals ?? { projects: 0, active_projects: 0, prompts: 0, average_sov: 0, failed_jobs: 0 };
   const alerts = overview?.alerts ?? [];
   const topCompetitors = overview?.top_competitors ?? [];
@@ -85,50 +88,57 @@ export default function DashboardGlobal() {
   ];
 
   /* ── Matrix rows from real projects ─────────────────────── */
-  const matrixProjects = projectsList.map((p) => ({
-    name: p.name,
-    chatgpt: p.overall.chatgpt ?? null,
-    chatgptStats: p.provider_stats?.chatgpt ?? null,
-    claude: p.overall.claude ?? null,
-    claudeStats: p.provider_stats?.claude ?? null,
-    perplexity: p.overall.perplexity ?? null,
-    perplexityStats: p.provider_stats?.perplexity ?? null,
-    gemini: p.overall.gemini ?? null,
-    geminiStats: p.provider_stats?.gemini ?? null,
-    grok: p.overall.grok ?? null,
-    grokStats: p.provider_stats?.grok ?? null,
-    deepseek: p.overall.deepseek ?? null,
-    deepseekStats: p.provider_stats?.deepseek ?? null,
-    sovAvg: Math.round(Object.values(p.overall).reduce((a, b) => a + b, 0) /
-      Math.max(1, Object.keys(p.overall).length)),
-    onClick: () => navigate(`/project/${p.id}`),
+  const modelIds = useMemo(() => {
+    const usage = new Map<string, number>();
+    for (const project of projectsList) {
+      const projectModels = new Set([
+        ...(project.enabled_models ?? []),
+        ...Object.keys(project.provider_stats ?? {}),
+      ]);
+      for (const modelId of projectModels) usage.set(modelId, (usage.get(modelId) ?? 0) + 1);
+    }
+    for (const entry of overview?.trend ?? []) {
+      for (const modelId of Object.keys(entry.provider_stats ?? {})) {
+        if (!usage.has(modelId)) usage.set(modelId, 0);
+      }
+    }
+    return Array.from(usage)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([modelId]) => modelId);
+  }, [overview?.trend, projectsList]);
+
+  const matrixProjects = projectsList.map((project) => ({
+    id: project.id,
+    name: project.name,
+    stats: project.provider_stats ?? {},
+    sovAvg: project.sov_avg ?? null,
+    onClick: () => navigate(`/project/${project.id}`),
   }));
 
   const globalHistory = overview?.trend ?? [];
   const chartLabels = globalHistory.map((entry) => new Date(entry.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }));
-  const chartDatasets = [
-    { key: 'chatgpt', label: 'ChatGPT', borderColor: '#3b82f6' },
-    { key: 'claude', label: 'Claude', borderColor: '#8b5cf6' },
-    { key: 'perplexity', label: 'Perplexity', borderColor: '#10b981' },
-    { key: 'gemini', label: 'Gemini', borderColor: '#f59e0b' },
-    { key: 'grok', label: 'Grok', borderColor: '#0ea5e9' },
-    { key: 'deepseek', label: 'DeepSeek', borderColor: '#f97316' },
-  ].map((provider) => ({
-    label: provider.label,
+  const visibleTrendModels = selectedTrendModel === 'all'
+    ? modelIds.slice(0, 8)
+    : modelIds.filter((modelId) => modelId === selectedTrendModel);
+  const chartDatasets = visibleTrendModels.map((modelId) => {
+    const modelIndex = modelIds.indexOf(modelId);
+    return {
+    label: modelDisplay(modelId).label,
     data: globalHistory.map((entry) => {
-      const stats = entry.provider_stats?.[provider.key];
+      const stats = entry.provider_stats?.[modelId];
       return stats ? stats.sov : null;
     }),
-    pointMeta: globalHistory.map((entry) => entry.provider_stats?.[provider.key] ?? null),
-    borderColor: provider.borderColor,
-  }));
+    pointMeta: globalHistory.map((entry) => entry.provider_stats?.[modelId] ?? null),
+    borderColor: MODEL_COLORS[modelIndex % MODEL_COLORS.length],
+    borderDash: MODEL_DASHES[modelIndex % MODEL_DASHES.length],
+  }});
 
   const exportCsv = () => {
     const rows = [
-      ['Projet', ...providers, 'SOV moyenne'],
+      ['Projet', ...modelIds, 'SOV moyenne'],
       ...projectsList.map((project) => {
-        const values = providers.map((provider) => {
-          const stats = project.provider_stats?.[provider];
+        const values = modelIds.map((modelId) => {
+          const stats = project.provider_stats?.[modelId];
           return stats ? `${stats.sov}% (${stats.mentions}/${stats.total})` : 'N/A';
         });
         const available = Object.values(project.overall);
@@ -261,14 +271,30 @@ export default function DashboardGlobal() {
               Chaque courbe montre la part de réponses où ta marque est citée. Une absence de point signifie qu'il n'y avait pas de donnée ; un point à 0% signifie que des réponses ont été analysées, mais sans mention.
             </HelpTooltip>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-3 text-xs text-slate-500 dark:text-slate-400">
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-blue-500" /> ChatGPT</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-violet-500" /> Claude</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-emerald-500" /> Perplexity</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-amber-500" /> Gemini</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-sky-500" /> Grok</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-orange-500" /> DeepSeek</span>
-          </div>
+          <select
+            value={selectedTrendModel}
+            onChange={(event) => setSelectedTrendModel(event.target.value)}
+            className="input-field max-w-72 text-xs py-1.5"
+          >
+            <option value="all">Vue globale — {Math.min(modelIds.length, 8)} modèles principaux</option>
+            {modelIds.map((modelId) => (
+              <option key={modelId} value={modelId}>{modelDisplay(modelId).label} — {modelId}</option>
+            ))}
+          </select>
+        </div>
+        <div className="mb-4 flex flex-wrap gap-2">
+          {visibleTrendModels.map((modelId) => {
+            const index = modelIds.indexOf(modelId);
+            return (
+              <span key={modelId} className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300" title={modelId}>
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: MODEL_COLORS[index % MODEL_COLORS.length] }} />
+                <span className="truncate">{modelDisplay(modelId).label}</span>
+              </span>
+            );
+          })}
+          {selectedTrendModel === 'all' && modelIds.length > 8 && (
+            <span className="px-2 py-1 text-xs text-slate-400">+{modelIds.length - 8} autres dans le sélecteur</span>
+          )}
         </div>
         <TrendChart chartId="trendGlobal" labels={chartLabels} datasets={chartDatasets} />
       </div>
@@ -291,7 +317,7 @@ export default function DashboardGlobal() {
         ) : matrixProjects.length === 0 ? (
           <p className="text-sm text-slate-400 py-4 text-center">Aucun projet. Cliquez sur "+ Déployer un Nouveau Site" pour commencer.</p>
         ) : (
-          <ProjectMatrix projects={matrixProjects} />
+          <ProjectMatrix projects={matrixProjects} models={modelIds} />
         )}
       </div>
 

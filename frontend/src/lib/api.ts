@@ -98,6 +98,9 @@ export interface PromptData {
   id: string | number
   text: string
   created_at: string
+  project_id?: string
+  theme?: string | null
+  is_active?: boolean
   [key: string]: unknown
 }
 
@@ -135,6 +138,7 @@ export interface ProviderStats {
   failed?: number
   url_found?: number
   brand_found?: number
+  latest_at?: string | null
 }
 
 export interface LatestResultsData {
@@ -247,13 +251,17 @@ export const getPrompts = (projectId: string | number) =>
   client.get<PromptData[]>(`/projects/${projectId}/prompts`).then((r) => r.data)
 
 export const createPrompts = (projectId: string | number, texts: string[], theme?: string) =>
-  client.post<unknown[]>(`/projects/${projectId}/prompts`, { texts, theme }).then((r) => r.data)
+  client.post<PromptData[]>(`/projects/${projectId}/prompts`, { texts, theme }).then((r) => r.data)
 
 export const deletePrompt = (projectId: string | number, promptId: string | number) =>
   client.delete<unknown>(`/projects/${projectId}/prompts/${promptId}`).then((r) => r.data)
 
-export const updatePrompt = (projectId: string | number, promptId: string | number, data: Record<string, unknown>) =>
-  client.patch<unknown>(`/projects/${projectId}/prompts/${promptId}`, data).then((r) => r.data)
+export const updatePrompt = (
+  projectId: string | number,
+  promptId: string | number,
+  data: { text?: string; theme?: string | null; is_active?: boolean },
+) =>
+  client.patch<PromptData>(`/projects/${projectId}/prompts/${promptId}`, data).then((r) => r.data)
 
 // ── Scan ────────────────────────────────────────────────────────────
 export const scanProject = (projectId: string | number, model?: string) => {
@@ -363,6 +371,7 @@ export interface DashboardOverview {
     name: string
     is_active: boolean
     prompt_count: number
+    enabled_models?: string[]
     overall: Record<string, number>
     provider_stats?: Record<string, ProviderStats>
     sov_avg?: number | null
@@ -397,8 +406,39 @@ export const analyzeResponse = (responseText: string, promptText = "") =>
     prompt_text: promptText,
   }).then((r) => r.data)
 
-export const getAuditLogs = () =>
-  client.get<Record<string, unknown>[]>("/audit-logs").then((r) => r.data)
+export interface AuditLogEntry {
+  id: string
+  organization_id: string
+  user_id: string
+  user_email?: string | null
+  user_name?: string | null
+  action: string
+  resource_type: string
+  resource_id?: string | null
+  details?: Record<string, unknown> | null
+  ip_address?: string | null
+  created_at: string
+}
+
+export interface AuditLogPage {
+  items: AuditLogEntry[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export const getAuditLogs = ({
+  limit = 50,
+  offset = 0,
+  search = "",
+}: {
+  limit?: number
+  offset?: number
+  search?: string
+} = {}) =>
+  client.get<AuditLogPage>("/audit-logs", {
+    params: { limit, offset, search: search.trim() || undefined },
+  }).then((r) => r.data)
 
 // ── Named export groupé pour compatibilité avec les pages existantes ─
 export const api = {

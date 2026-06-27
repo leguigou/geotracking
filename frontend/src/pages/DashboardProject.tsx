@@ -37,6 +37,14 @@ const TREND_DASHES: Array<number[] | undefined> = [
   [10, 4, 2, 4],
 ];
 
+const TRACKING_FREQUENCY_LABELS: Record<string, string> = {
+  disabled: 'Désactivé — scans manuels uniquement',
+  daily: 'Quotidien',
+  weekly: 'Hebdomadaire',
+  biweekly: 'Toutes les deux semaines',
+  monthly: 'Mensuel',
+};
+
 interface PromptRowData {
   id: string;
   prompt: string;
@@ -51,7 +59,7 @@ export default function DashboardProject() {
   const [period, setPeriod] = useState('last30d');
   const [selectedTheme, setSelectedTheme] = useState<string | null>(null);
   const { data: project, loading: loadingProject } = useProject(id);
-  const { data: promptsRaw, loading: loadingPrompts } = usePrompts(id);
+  const { data: promptsRaw, loading: loadingPrompts, refetch: refetchPrompts } = usePrompts(id);
 
   /* ── Actions projet ────────────────────────────────────────── */
   const [showActions, setShowActions] = useState(false);
@@ -469,7 +477,11 @@ export default function DashboardProject() {
               </span>
             </p>
             <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-400">
-              Scan automatique : {project?.frequency ?? '—'}
+              Scan automatique : {
+                project?.frequency
+                  ? TRACKING_FREQUENCY_LABELS[project.frequency] ?? project.frequency
+                  : '—'
+              }
               {project?.last_scheduled_scan_at && ` · dernier lancement ${new Date(project.last_scheduled_scan_at).toLocaleString('fr-FR')}`}
             </p>
           </div>
@@ -862,7 +874,13 @@ export default function DashboardProject() {
               <div className="mt-3 w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5">
                 <div className={`${llm.barColor} h-1.5 rounded-full transition-all duration-500`} style={{ width: `${hasData ? Math.max(sovVal, 2) : 0}%` }} />
               </div>
-              <p className="text-xs text-slate-400 mt-2">{hasData ? 'Dernier scan' : 'Aucune donnée scannée'}</p>
+              <p className="text-xs text-slate-400 mt-2">
+                {hasData
+                  ? stats?.latest_at
+                    ? `Mis à jour le ${new Date(stats.latest_at).toLocaleString('fr-FR')}`
+                    : 'Dernier résultat disponible'
+                  : 'Aucune donnée scannée'}
+              </p>
             </div>
           );
         }) : (
@@ -1090,7 +1108,7 @@ export default function DashboardProject() {
           projectId={id}
           prompts={Array.isArray(promptsRaw) ? promptsRaw : []}
           onClose={() => setShowPromptsManager(false)}
-          onRefresh={() => window.location.reload()}
+          onRefresh={refetchPrompts}
         />
       )}
 

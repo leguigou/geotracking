@@ -17,7 +17,7 @@ class ProjectCreate(BaseModel):
     # New clients should prefer enabled_models with full OpenRouter ids.
     models: Optional[list[str]] = None
     enabled_models: list[str] = Field(default_factory=list)
-    frequency: Literal["daily", "weekly", "biweekly", "monthly"] = "daily"
+    frequency: Literal["disabled", "daily", "weekly", "biweekly", "monthly"] = "daily"
 
     @field_validator("name", "target_url")
     @classmethod
@@ -58,7 +58,7 @@ class ProjectUpdate(BaseModel):
     description: Optional[str] = None
     brand_names: Optional[list[str]] = None
     enabled_models: Optional[list[str]] = None
-    frequency: Optional[Literal["daily", "weekly", "biweekly", "monthly"]] = None
+    frequency: Optional[Literal["disabled", "daily", "weekly", "biweekly", "monthly"]] = None
     is_active: Optional[bool] = None
 
     @field_validator("target_url")

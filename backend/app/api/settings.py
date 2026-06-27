@@ -1,7 +1,7 @@
 """Settings API endpoints."""
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 from pydantic import BaseModel, Field
 from typing import Dict, Optional
 import httpx
@@ -11,6 +11,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.user import User
 from app.models.setting import Setting
+from app.models.project import Project
 from app.services.openrouter import compact_model, get_catalog, recommended_models
 from app.config import settings as app_settings
 
@@ -44,7 +45,24 @@ async def update_settings(
     db: AsyncSession = Depends(get_db),
 ):
     org_id = current_user.organization_id
-    for key, value in req.settings.items():
+    normalized_settings = dict(req.settings)
+    if "temperature" in normalized_settings:
+        try:
+            temperature = float(normalized_settings["temperature"])
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="La température doit être un nombre entre 0 et 1")
+        if not 0 <= temperature <= 1:
+            raise HTTPException(status_code=422, detail="La température doit être comprise entre 0 et 1")
+        normalized_settings["temperature"] = str(temperature)
+
+    allowed_frequencies = {"disabled", "daily", "weekly", "biweekly", "monthly"}
+    if (
+        "frequency" in normalized_settings
+        and normalized_settings["frequency"] not in allowed_frequencies
+    ):
+        raise HTTPException(status_code=422, detail="Fréquence de tracking invalide")
+
+    for key, value in normalized_settings.items():
         result = await db.execute(
             select(Setting).where(
                 Setting.organization_id == org_id,
@@ -57,6 +75,17 @@ async def update_settings(
         else:
             setting = Setting(organization_id=org_id, key=key, value=value)
             db.add(setting)
+
+    # La fréquence des paramètres est un réglage global : elle s'applique à
+    # tous les projets existants de l'organisation. La valeur "disabled" est
+    # volontairement ignorée par le planificateur, tout en laissant les scans
+    # manuels disponibles.
+    if frequency := normalized_settings.get("frequency"):
+        await db.execute(
+            update(Project)
+            .where(Project.organization_id == org_id)
+            .values(frequency=frequency)
+        )
     await db.flush()
 
     result = await db.execute(

@@ -7,6 +7,7 @@ import api, { type OpenRouterModel } from '../lib/api';
 const steps = ['create.step1', 'create.step2', 'create.step3', 'create.step4'] as const;
 
 const runsPerMonth: Record<string, number> = {
+  disabled: 0,
   daily: 30,
   weekly: 4.3,
   biweekly: 2.2,
@@ -14,6 +15,7 @@ const runsPerMonth: Record<string, number> = {
 };
 
 const frequencyLabels: Record<string, string> = {
+  disabled: 'Désactivée — scans manuels',
   daily: 'Quotidienne',
   weekly: 'Hebdomadaire',
   biweekly: 'Toutes les deux semaines',
@@ -46,11 +48,15 @@ export default function CreateProject() {
   const modelNameById = new Map(availableModels.map((model) => [model.id, model.name]));
 
   useEffect(() => {
-    api.getAvailableModels()
-      .then((data) => {
+    Promise.all([api.getAvailableModels(), api.getSettings()])
+      .then(([data, settings]) => {
         const recommended = Object.values(data.recommended || {});
         setAvailableModels(data.models);
         setSelectedModelIds(recommended.slice(0, 3).map((model) => model.id));
+        const defaultFrequency = String(settings.frequency || 'weekly');
+        if (Object.hasOwn(frequencyLabels, defaultFrequency)) {
+          setFrequency(defaultFrequency);
+        }
       })
       .finally(() => setLoadingModels(false));
   }, []);
@@ -196,6 +202,7 @@ export default function CreateProject() {
             <div>
               <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Fréquence automatique</label>
               <select className="input-field w-full" value={frequency} onChange={(event) => setFrequency(event.target.value)}>
+                <option value="disabled">Désactivée — scans manuels uniquement</option>
                 <option value="daily">Quotidienne</option>
                 <option value="weekly">Hebdomadaire</option>
                 <option value="biweekly">Toutes les deux semaines</option>

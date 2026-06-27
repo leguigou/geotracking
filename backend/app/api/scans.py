@@ -9,7 +9,7 @@ from arq.connections import RedisSettings
 from arq.jobs import Job
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import desc, select
+from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -85,6 +85,7 @@ class ProviderStats(BaseModel):
     failed: int = 0
     url_found: int = 0
     brand_found: int = 0
+    latest_at: Optional[datetime] = None
 
 
 class LatestScanResponse(BaseModel):
@@ -209,8 +210,13 @@ async def list_results(
     result = await db.execute(
         select(ScanResult, Prompt.text)
         .join(Prompt, Prompt.id == ScanResult.prompt_id)
+        .outerjoin(ScanBatch, ScanBatch.id == ScanResult.batch_id)
         .where(ScanResult.project_id == uid)
-        .order_by(desc(ScanResult.scanned_at))
+        .order_by(
+            desc(ScanBatch.created_at),
+            desc(ScanResult.scanned_at),
+            desc(ScanResult.id),
+        )
         .offset(offset)
         .limit(limit)
     )
@@ -376,6 +382,7 @@ def _summarise_results(
             "failed": sum(1 for item in items if item.error),
             "url_found": sum(1 for item in items if item.has_url),
             "brand_found": sum(1 for item in items if item.has_brand),
+            "latest_at": max((item.scanned_at for item in items if item.scanned_at), default=None),
         }
         for model, items in model_groups.items()
     }
@@ -447,10 +454,59 @@ async def get_latest_results(
     if not batch:
         raise HTTPException(status_code=404, detail="No scan batch found for this project")
 
-    results_result = await db.execute(
-        select(ScanResult).where(ScanResult.batch_id == batch.id).order_by(ScanResult.model, ScanResult.prompt_id)
+    # Build a stable dashboard snapshot: the latest available batch for each
+    # exact model. A targeted refresh then updates only that model without
+    # erasing the latest known results of the others.
+    model_batches = (
+        select(
+            ScanResult.model.label("model"),
+            ScanResult.batch_id.label("batch_id"),
+            func.max(ScanBatch.created_at).label("batch_created_at"),
+        )
+        .join(ScanBatch, ScanBatch.id == ScanResult.batch_id)
+        .where(
+            ScanResult.project_id == uid,
+            ScanBatch.status.in_(("completed", "failed", "cancelled")),
+        )
+        .group_by(ScanResult.model, ScanResult.batch_id)
+        .subquery()
     )
-    results = list(results_result.scalars().all())
+    ranked_model_batches = (
+        select(
+            model_batches.c.model,
+            model_batches.c.batch_id,
+            func.row_number().over(
+                partition_by=model_batches.c.model,
+                order_by=(
+                    model_batches.c.batch_created_at.desc(),
+                    model_batches.c.batch_id.desc(),
+                ),
+            ).label("batch_rank"),
+        )
+        .subquery()
+    )
+    pair_query = select(
+        ranked_model_batches.c.model,
+        ranked_model_batches.c.batch_id,
+    ).where(
+        ranked_model_batches.c.batch_rank == 1,
+    )
+    if project.enabled_models:
+        pair_query = pair_query.where(ranked_model_batches.c.model.in_(project.enabled_models))
+    latest_pairs = list((await db.execute(pair_query)).all())
+
+    results: list[ScanResult] = []
+    if latest_pairs:
+        pair_filters = [
+            and_(ScanResult.model == model, ScanResult.batch_id == batch_id)
+            for model, batch_id in latest_pairs
+        ]
+        results_result = await db.execute(
+            select(ScanResult)
+            .where(or_(*pair_filters))
+            .order_by(ScanResult.model, ScanResult.prompt_id)
+        )
+        results = list(results_result.scalars().all())
     prompt_ids = {result.prompt_id for result in results}
     prompts_by_id = {}
     if prompt_ids:
@@ -460,7 +516,10 @@ async def get_latest_results(
     overall, provider_stats, prompts, sov = _summarise_results(results, prompts_by_id, project)
     return LatestScanResponse(
         batch=batch,
-        scan_date=batch.completed_at or batch.created_at,
+        scan_date=max(
+            (result.scanned_at for result in results if result.scanned_at),
+            default=batch.completed_at or batch.created_at,
+        ),
         overall=overall,
         provider_stats=provider_stats,
         prompts=prompts,
@@ -493,7 +552,7 @@ async def get_scan_history(
         for result in result_rows.scalars().all():
             results_by_batch[result.batch_id].append(result)
     history = []
-    for batch in reversed(batches):
+    for batch in batches:
         results = results_by_batch[batch.id]
         overall, provider_stats, _, _ = _summarise_results(results, {})
         history.append(

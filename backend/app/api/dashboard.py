@@ -11,7 +11,6 @@ from app.database import get_db
 from app.dependencies import get_current_organization
 from app.models.project import Project, Prompt
 from app.models.scan_result import ScanBatch, ScanResult
-from app.services.openrouter import model_provider_key
 from app.services.scanner import calculate_sov, run_assertions
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -24,7 +23,7 @@ def _provider_sov(results: list[ScanResult]) -> dict[str, float]:
 def _provider_stats(results: list[ScanResult]) -> dict[str, dict]:
     grouped: dict[str, list[ScanResult]] = defaultdict(list)
     for result in results:
-        grouped[model_provider_key(result.model)].append(result)
+        grouped[result.model].append(result)
     return {
         provider: {
             "sov": calculate_sov(sum(1 for item in items if item.has_url or item.has_brand), len(items)),
@@ -70,7 +69,7 @@ def _competitor_counts(project: Project, results: list[ScanResult]) -> dict[str,
             )
             entry["mentions"] += 1
             entry["projects"].add(project.name)
-            entry["models"].add(model_provider_key(result.model))
+            entry["models"].add(result.model)
             if competitor.get("rank") is not None:
                 entry["rank_sum"] += int(competitor["rank"])
                 entry["rank_count"] += 1
@@ -148,7 +147,23 @@ async def dashboard_overview(
     competitors: dict[str, dict] = {}
     for project in projects:
         batch = latest_by_project.get(project.id)
-        latest_results = results_by_batch.get(batch.id, []) if batch else []
+        latest_results: list[ScanResult] = []
+        seen_models: set[str] = set()
+        enabled_models = set(project.enabled_models or [])
+        for candidate in (item for item in relevant_batches if item.project_id == project.id):
+            candidate_results = results_by_batch.get(candidate.id, [])
+            candidate_models = {
+                result.model
+                for result in candidate_results
+                if (not enabled_models or result.model in enabled_models)
+                and result.model not in seen_models
+            }
+            if not candidate_models:
+                continue
+            latest_results.extend(
+                result for result in candidate_results if result.model in candidate_models
+            )
+            seen_models.update(candidate_models)
         provider_stats = _provider_stats(latest_results) if batch else {}
         overall = {provider: stats["sov"] for provider, stats in provider_stats.items()}
         all_latest_sov.extend(overall.values())
@@ -209,6 +224,7 @@ async def dashboard_overview(
                 "name": project.name,
                 "is_active": project.is_active,
                 "prompt_count": int(prompt_counts.get(project.id, 0)),
+                "enabled_models": list(project.enabled_models or []),
                 "overall": overall,
                 "provider_stats": provider_stats,
                 "sov_avg": project_avg_sov,

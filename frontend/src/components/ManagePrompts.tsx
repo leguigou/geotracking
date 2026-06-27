@@ -12,10 +12,16 @@ interface Props {
 
 export default function ManagePrompts({ projectId, prompts, onClose, onRefresh }: Props) {
   const { t } = useTranslation();
+  const [localPrompts, setLocalPrompts] = useState<PromptData[]>(prompts);
   const [newTheme, setNewTheme] = useState('');
   const [newText, setNewText] = useState('');
   const [themeFilter, setThemeFilter] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | number | null>(null);
+  const [editText, setEditText] = useState('');
+  const [editTheme, setEditTheme] = useState('');
+  const [editActive, setEditActive] = useState(true);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   // Réécriture IA
   const [hasKey, setHasKey] = useState(true);
@@ -34,6 +40,10 @@ export default function ManagePrompts({ projectId, prompts, onClose, onRefresh }
       });
   }, []);
 
+  useEffect(() => {
+    setLocalPrompts(prompts);
+  }, [prompts]);
+
   const handleRewrite = async () => {
     if (!newText.trim()) return;
     setRewriting(true);
@@ -50,18 +60,19 @@ export default function ManagePrompts({ projectId, prompts, onClose, onRefresh }
   };
 
   // Grouper les prompts par thème
-  const themes = [...new Set(prompts.map((p) => String((p as Record<string, unknown>).theme ?? '')))].filter(Boolean).sort();
+  const themes = [...new Set(localPrompts.map((p) => p.theme ?? ''))].filter(Boolean).sort();
   const filtered = themeFilter
-    ? prompts.filter((p) => String((p as Record<string, unknown>).theme ?? '') === themeFilter)
-    : prompts;
+    ? localPrompts.filter((p) => p.theme === themeFilter)
+    : localPrompts;
 
   const handleAddPrompt = async () => {
     if (!newText.trim()) return;
     setSaving(true);
     try {
-      await api.createPrompts(projectId, [newText.trim()], newTheme || undefined);
+      const created = await api.createPrompts(projectId, [newText.trim()], newTheme.trim() || undefined);
+      setLocalPrompts((current) => [...current, ...created]);
       setNewText('');
-      onRefresh();
+      await onRefresh();
     } catch (err) {
       alert(`Erreur: ${err instanceof Error ? err.message : 'Échec'}`);
     } finally {
@@ -73,7 +84,9 @@ export default function ManagePrompts({ projectId, prompts, onClose, onRefresh }
     if (!confirm('Supprimer ce prompt ?')) return;
     try {
       await api.deletePrompt(projectId, promptId);
-      onRefresh();
+      setLocalPrompts((current) => current.filter((item) => item.id !== promptId));
+      if (editingId === promptId) setEditingId(null);
+      await onRefresh();
     } catch (err) {
       alert(`Erreur: ${err instanceof Error ? err.message : 'Échec'}`);
     }
@@ -84,12 +97,62 @@ export default function ManagePrompts({ projectId, prompts, onClose, onRefresh }
     if (!text?.trim()) return;
     setSaving(true);
     try {
-      await api.createPrompts(projectId, [text.trim()], theme);
-      onRefresh();
+      const created = await api.createPrompts(projectId, [text.trim()], theme);
+      setLocalPrompts((current) => [...current, ...created]);
+      await onRefresh();
     } catch (err) {
       alert(`Erreur: ${err instanceof Error ? err.message : 'Échec'}`);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const startEditing = (promptData: PromptData) => {
+    setEditingId(promptData.id);
+    setEditText(promptData.text);
+    setEditTheme(promptData.theme ?? '');
+    setEditActive(promptData.is_active !== false);
+  };
+
+  const cancelEditing = () => {
+    setEditingId(null);
+    setEditText('');
+    setEditTheme('');
+    setEditActive(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (editingId == null || !editText.trim()) return;
+    setSavingEdit(true);
+    try {
+      const updated = await api.updatePrompt(projectId, editingId, {
+        text: editText.trim(),
+        theme: editTheme.trim() || null,
+        is_active: editActive,
+      });
+      setLocalPrompts((current) => current.map((item) => (
+        item.id === editingId ? updated : item
+      )));
+      cancelEditing();
+      await onRefresh();
+    } catch (err) {
+      alert(`Erreur: ${err instanceof Error ? err.message : 'Échec'}`);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleToggleActive = async (promptData: PromptData) => {
+    try {
+      const updated = await api.updatePrompt(projectId, promptData.id, {
+        is_active: promptData.is_active === false,
+      });
+      setLocalPrompts((current) => current.map((item) => (
+        item.id === promptData.id ? updated : item
+      )));
+      await onRefresh();
+    } catch (err) {
+      alert(`Erreur: ${err instanceof Error ? err.message : 'Échec'}`);
     }
   };
 
@@ -211,10 +274,10 @@ export default function ManagePrompts({ projectId, prompts, onClose, onRefresh }
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
                 }`}
               >
-                Tous ({prompts.length})
+                Tous ({localPrompts.length})
               </button>
               {themes.map((th) => {
-                const count = prompts.filter((p) => String((p as Record<string, unknown>).theme ?? '') === th).length;
+                const count = localPrompts.filter((p) => p.theme === th).length;
                 return (
                   <button
                     key={th}
@@ -233,10 +296,10 @@ export default function ManagePrompts({ projectId, prompts, onClose, onRefresh }
           )}
 
           {/* Liste des prompts */}
-          <div className="space-y-2 max-h-64 overflow-y-auto border-t border-slate-200 dark:border-slate-700 pt-4">
+          <div className="space-y-2 max-h-96 overflow-y-auto border-t border-slate-200 dark:border-slate-700 pt-4">
             {filtered.length === 0 ? (
               <p className="text-sm text-slate-400 text-center py-4">
-                {prompts.length === 0
+                {localPrompts.length === 0
                   ? 'Aucun prompt configuré. Ajoutez-en un ci-dessus.'
                   : 'Aucun prompt pour ce thème.'}
               </p>
@@ -246,7 +309,11 @@ export default function ManagePrompts({ projectId, prompts, onClose, onRefresh }
                 return (
                   <div
                     key={String(pData.id ?? '')}
-                    className="flex items-start gap-3 p-3 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group"
+                    className={`flex flex-wrap items-start gap-3 p-3 rounded-lg border transition-colors group ${
+                      editingId === p.id
+                        ? 'border-blue-300 bg-blue-50/60 dark:border-blue-500/50 dark:bg-blue-500/5'
+                        : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                    }`}
                   >
                     {pData.theme ? (
                       <span className="badge bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/20 text-[10px] mt-0.5 shrink-0">
@@ -261,13 +328,22 @@ export default function ManagePrompts({ projectId, prompts, onClose, onRefresh }
                       {String(pData.text ?? '')}
                     </p>
                     <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                      <button
+                        onClick={() => startEditing(p)}
+                        className="rounded-md p-1 text-slate-400 hover:bg-blue-50 hover:text-blue-600 dark:text-slate-500 dark:hover:bg-blue-500/10 dark:hover:text-blue-300"
+                        title="Modifier ce prompt"
+                        aria-label="Modifier ce prompt"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zM19.5 7.125L16.875 4.5M18 14.25v4.125A1.875 1.875 0 0116.125 20.25H5.625A1.875 1.875 0 013.75 18.375V7.875A1.875 1.875 0 015.625 6H9.75" />
+                        </svg>
+                      </button>
                       {(pData as Record<string, unknown>).is_active !== false ? (
                         <button
                           onClick={async () => {
-                            await api.updatePrompt(projectId, pData.id as string | number, { is_active: false });
-                            onRefresh();
+                            await handleToggleActive(p);
                           }}
-                          className="text-slate-300 hover:text-amber-500 dark:text-slate-500 dark:hover:text-amber-400 opacity-0 group-hover:opacity-100 transition-all"
+                          className="rounded-md p-1 text-slate-400 hover:bg-amber-50 hover:text-amber-600 dark:text-slate-500 dark:hover:bg-amber-500/10 dark:hover:text-amber-300"
                           title="Mettre en pause"
                         >
                           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -277,10 +353,9 @@ export default function ManagePrompts({ projectId, prompts, onClose, onRefresh }
                       ) : (
                         <button
                           onClick={async () => {
-                            await api.updatePrompt(projectId, pData.id as string | number, { is_active: true });
-                            onRefresh();
+                            await handleToggleActive(p);
                           }}
-                          className="text-slate-300 hover:text-emerald-500 dark:text-slate-500 dark:hover:text-emerald-400 opacity-0 group-hover:opacity-100 transition-all"
+                          className="rounded-md p-1 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 dark:text-slate-500 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-300"
                           title="Réactiver"
                         >
                           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -290,7 +365,7 @@ export default function ManagePrompts({ projectId, prompts, onClose, onRefresh }
                       )}
                       <button
                         onClick={() => handleDeletePrompt(pData.id as string | number)}
-                        className="text-slate-300 hover:text-red-500 dark:text-slate-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all shrink-0 mt-0.5"
+                        className="rounded-md p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:text-slate-500 dark:hover:bg-red-500/10 dark:hover:text-red-300"
                         title="Supprimer"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -298,6 +373,62 @@ export default function ManagePrompts({ projectId, prompts, onClose, onRefresh }
                         </svg>
                       </button>
                     </div>
+                    {editingId === p.id && (
+                      <div className="w-full space-y-3 border-t border-blue-200 pt-3 dark:border-blue-500/20">
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">
+                            Texte du prompt
+                          </label>
+                          <textarea
+                            autoFocus
+                            rows={4}
+                            value={editText}
+                            onChange={(event) => setEditText(event.target.value)}
+                            className="input-field w-full resize-y"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                          <div className="flex-1">
+                            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">
+                              Thème
+                            </label>
+                            <input
+                              value={editTheme}
+                              onChange={(event) => setEditTheme(event.target.value)}
+                              className="input-field w-full"
+                              placeholder="Général"
+                            />
+                          </div>
+                          <label className="flex min-h-10 items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+                            <input
+                              type="checkbox"
+                              checked={editActive}
+                              onChange={(event) => setEditActive(event.target.checked)}
+                              className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                            />
+                            Prompt actif
+                          </label>
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={cancelEditing}
+                            disabled={savingEdit}
+                            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+                          >
+                            Annuler
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSaveEdit}
+                            disabled={savingEdit || !editText.trim()}
+                            className="btn-primary"
+                          >
+                            {savingEdit ? 'Enregistrement…' : 'Enregistrer'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     </div>
                 );
               })

@@ -1,6 +1,6 @@
-import { NavLink, useNavigate } from "react-router-dom"
+import { NavLink, useLocation, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useAuth } from "../hooks/useAuth"
 import { useProjects } from "../hooks/useApi"
 
@@ -19,6 +19,7 @@ interface SidebarProps {
 export default function Sidebar({ open, onClose }: SidebarProps) {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
+  const location = useLocation()
   const { user, logout } = useAuth()
   const { data: projects } = useProjects()
   const [showProjects, setShowProjects] = useState(false)
@@ -36,6 +37,12 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
     localStorage.setItem("theme", next ? "dark" : "light")
     setDark(next)
   }
+
+  useEffect(() => {
+    if (location.pathname.startsWith("/project/") && location.pathname !== "/project/new") {
+      setShowProjects(true)
+    }
+  }, [location.pathname])
 
   const setLang = (lang: "fr" | "en") => {
     i18n.changeLanguage(lang)
@@ -101,7 +108,11 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           <div className="pt-3">
             <button
               onClick={() => setShowProjects(!showProjects)}
-              className="flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60 transition-all"
+              className={`flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                location.pathname.startsWith("/project/") && location.pathname !== "/project/new"
+                  ? "bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300"
+                  : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
+              }`}
             >
               <span className="flex items-center gap-2">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
@@ -118,15 +129,25 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
                 {!projects || projects.length === 0 ? (
                   <p className="text-xs text-slate-400 px-2 py-1.5">Aucun projet</p>
                 ) : (
-                  projects.map((p) => (
-                    <button
-                      key={p.id}
-                      onClick={() => { navigate(`/project/${p.id}`); onClose(); }}
-                      className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-white transition-all truncate"
-                    >
-                      {p.name}
-                    </button>
-                  ))
+                  projects.map((p) => {
+                    const projectPath = `/project/${p.id}`
+                    const isActive = location.pathname === projectPath || location.pathname.startsWith(`${projectPath}/`)
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => { navigate(projectPath); onClose(); }}
+                        aria-current={isActive ? "page" : undefined}
+                        className={`relative w-full truncate rounded-md px-2.5 py-2 text-left text-xs transition-all ${
+                          isActive
+                            ? "bg-blue-100 font-semibold text-blue-800 shadow-sm ring-1 ring-inset ring-blue-200 dark:bg-blue-500/20 dark:text-blue-200 dark:ring-blue-500/30"
+                            : "font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white"
+                        }`}
+                      >
+                        {isActive && <span className="absolute -left-[11px] inset-y-1 w-1 rounded-r-full bg-blue-600 dark:bg-blue-400" />}
+                        <span className="block truncate">{p.name}</span>
+                      </button>
+                    )
+                  })
                 )}
               </div>
             )}

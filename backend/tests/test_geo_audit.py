@@ -1,4 +1,5 @@
 import asyncio
+import gzip
 
 import httpx
 import pytest
@@ -10,6 +11,17 @@ from app.services.geo_audit import (
     parse_page,
     safe_get,
 )
+
+
+class StaticAsyncStream(httpx.AsyncByteStream):
+    def __init__(self, content: bytes):
+        self.content = content
+
+    async def __aiter__(self):
+        yield self.content
+
+    async def aclose(self):
+        return None
 
 
 def test_geo_audit_extracts_page_signals_and_prioritizes_blockers():
@@ -72,7 +84,7 @@ def test_geo_audit_streams_large_pages_with_a_configurable_limit(monkeypatch):
     monkeypatch.setattr("app.services.geo_audit._validate_public_url", allow_test_url)
     body = b"<html><body>" + (b"x" * 3_000_000) + b"</body></html>"
     transport = httpx.MockTransport(
-        lambda request: httpx.Response(200, content=body, headers={"content-type": "text/html"})
+        lambda request: httpx.Response(200, stream=StaticAsyncStream(body), headers={"content-type": "text/html"})
     )
 
     async def run():
@@ -83,6 +95,39 @@ def test_geo_audit_streams_large_pages_with_a_configurable_limit(monkeypatch):
                 await safe_get(client, "https://example.test", max_bytes=2_000_000)
 
     asyncio.run(run())
+
+
+def test_geo_audit_tolerates_incorrect_compression_headers(monkeypatch):
+    async def allow_test_url(url):
+        return url
+
+    monkeypatch.setattr("app.services.geo_audit._validate_public_url", allow_test_url)
+    html = b"<html><body>Audit GEO</body></html>"
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        if request.url.path == "/valid":
+            return httpx.Response(
+                200,
+                stream=StaticAsyncStream(gzip.compress(html)),
+                headers={"content-type": "text/html", "content-encoding": "gzip"},
+            )
+        return httpx.Response(
+            200,
+            stream=StaticAsyncStream(html),
+            headers={"content-type": "text/html", "content-encoding": "gzip"},
+        )
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            malformed, _ = await safe_get(client, "https://example.test/malformed")
+            valid, _ = await safe_get(client, "https://example.test/valid")
+            assert malformed.content == html
+            assert valid.content == html
+
+    asyncio.run(run())
+    assert all(request.headers["accept-encoding"] == "identity" for request in requests)
 
 
 def test_geo_audit_endpoint_returns_prioritized_report(client, account, monkeypatch):

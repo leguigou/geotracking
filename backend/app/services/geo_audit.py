@@ -7,6 +7,7 @@ import ipaddress
 import json
 import re
 import socket
+import zlib
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from html.parser import HTMLParser
@@ -184,6 +185,39 @@ async def _validate_public_url(url: str) -> str:
     return parsed.geturl()
 
 
+def _decompress_limited(content: bytes, encoding: str, max_bytes: int) -> bytes:
+    """Decode common HTTP compression without trusting a broken header."""
+    encoding = encoding.lower().strip()
+    if encoding not in {"gzip", "x-gzip", "deflate"}:
+        return content
+
+    def decode(wbits: int) -> bytes:
+        decoder = zlib.decompressobj(wbits)
+        decoded = decoder.decompress(content, max_bytes + 1)
+        if len(decoded) > max_bytes or decoder.unconsumed_tail:
+            raise AuditFetchError(
+                f"Le document décompressé dépasse la taille maximale analysable de {max_bytes / 1_000_000:g} Mo"
+            )
+        decoded += decoder.flush(max(1, max_bytes + 1 - len(decoded)))
+        if len(decoded) > max_bytes:
+            raise AuditFetchError(
+                f"Le document décompressé dépasse la taille maximale analysable de {max_bytes / 1_000_000:g} Mo"
+            )
+        return decoded
+
+    try:
+        if encoding in {"gzip", "x-gzip"}:
+            return decode(16 + zlib.MAX_WBITS)
+        try:
+            return decode(zlib.MAX_WBITS)
+        except zlib.error:
+            return decode(-zlib.MAX_WBITS)
+    except zlib.error:
+        # Some CDNs incorrectly send Content-Encoding: gzip/deflate while the
+        # payload is already plain text. In that case, keep the raw document.
+        return content
+
+
 async def safe_get(
     client: httpx.AsyncClient,
     url: str,
@@ -195,7 +229,11 @@ async def safe_get(
         async with client.stream(
             "GET",
             current,
-            headers={"User-Agent": AUDIT_USER_AGENT, "Accept": "text/html,application/xml,text/plain;q=0.9,*/*;q=0.1"},
+            headers={
+                "User-Agent": AUDIT_USER_AGENT,
+                "Accept": "text/html,application/xml,text/plain;q=0.9,*/*;q=0.1",
+                "Accept-Encoding": "identity",
+            },
             follow_redirects=False,
         ) as streamed:
             status_code = streamed.status_code
@@ -208,15 +246,25 @@ async def safe_get(
                     limit_mb = max_bytes / 1_000_000
                     raise AuditFetchError(f"Le document dépasse la taille maximale analysable de {limit_mb:g} Mo")
                 content = bytearray()
-                async for chunk in streamed.aiter_bytes():
+                async for chunk in streamed.aiter_raw():
                     content.extend(chunk)
                     if len(content) > max_bytes:
                         limit_mb = max_bytes / 1_000_000
                         raise AuditFetchError(f"Le document dépasse la taille maximale analysable de {limit_mb:g} Mo")
+                decoded = _decompress_limited(
+                    bytes(content),
+                    headers.get("content-encoding", ""),
+                    max_bytes,
+                )
+                response_headers = [
+                    (name, value)
+                    for name, value in headers.multi_items()
+                    if name.lower() not in {"content-encoding", "content-length"}
+                ]
                 return httpx.Response(
                     status_code,
-                    headers=headers,
-                    content=bytes(content),
+                    headers=response_headers,
+                    content=decoded,
                     request=request,
                 ), current
         if not location:

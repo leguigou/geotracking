@@ -185,25 +185,48 @@ export default function ManagePrompts({ projectId, prompts, onClose, onRefresh }
               </div>
             )}
 
-            <div className="flex gap-2">
-              <input
-                type="text"
-                className="input-field flex-1"
-                placeholder="Question / mot-clé..."
-                value={newText}
-                onChange={(e) => setNewText(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAddPrompt()}
-              />
-              <input
-                type="text"
-                className="input-field w-28"
-                placeholder="Thème"
-                value={newTheme}
-                onChange={(e) => setNewTheme(e.target.value)}
-              />
-              <button onClick={handleAddPrompt} disabled={saving || !newText.trim()} className="btn-primary shrink-0">
-                {saving ? '...' : t('create.add')}
-              </button>
+            <div className="space-y-3">
+              <div>
+                <label htmlFor="new-prompt-text" className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-300">
+                  Texte du prompt
+                </label>
+                <textarea
+                  id="new-prompt-text"
+                  rows={3}
+                  className="input-field w-full resize-y"
+                  placeholder="Ex. Quel est le meilleur robot de piscine pour une maison à Aubagne ?"
+                  value={newText}
+                  onChange={(event) => setNewText(event.target.value)}
+                  onKeyDown={(event) => {
+                    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                      handleAddPrompt();
+                    }
+                  }}
+                />
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <div className="min-w-0 flex-1">
+                  <label htmlFor="new-prompt-theme" className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-300">
+                    Thème <span className="font-normal text-slate-400">(facultatif)</span>
+                  </label>
+                  <input
+                    id="new-prompt-theme"
+                    type="text"
+                    className="input-field w-full"
+                    placeholder="Ex. Piscine"
+                    value={newTheme}
+                    onChange={(event) => setNewTheme(event.target.value)}
+                  />
+                </div>
+                <button
+                  onClick={handleAddPrompt}
+                  disabled={saving || !newText.trim()}
+                  className="btn-primary w-full shrink-0 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                >
+                  {saving ? 'Ajout…' : t('create.add')}
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-400">Astuce : Ctrl + Entrée pour ajouter rapidement le prompt.</p>
             </div>
 
             {/* Ligne réécriture IA */}

@@ -136,7 +136,7 @@ function AuditReport({ report, onExportPdf }: { report: GeoAuditReport; onExport
           {report.ai_model ? `Généré par le modèle assistant sélectionné : ${report.ai_model}` : 'Résumé IA non généré'}
         </p>
         {report.ai_summary ? (
-          <div className="whitespace-pre-wrap text-sm leading-7 text-slate-700 dark:text-slate-200">{report.ai_summary}</div>
+          <MarkdownText text={report.ai_summary} />
         ) : (
           <p className="rounded-xl border border-dashed border-violet-200 p-4 text-sm text-slate-500 dark:border-violet-500/20">
             {report.ai_warning || 'La génération du résumé IA était désactivée. Les préconisations techniques restent disponibles.'}
@@ -229,4 +229,47 @@ function TechnicalCard({ title, status, children }: { title: string; status: boo
 
 function Line({ label, value, danger = false }: { label: string; value: string; danger?: boolean }) {
   return <div className="flex items-start justify-between gap-3 text-xs"><dt className="shrink-0 text-slate-400">{label}</dt><dd className={`break-words text-right font-medium ${danger ? 'text-red-600' : 'text-slate-700 dark:text-slate-200'}`}>{value}</dd></div>;
+}
+
+function MarkdownText({ text }: { text: string }) {
+  const lines = text.split(/\r?\n/);
+  return (
+    <div className="space-y-2 text-sm leading-7 text-slate-700 dark:text-slate-200">
+      {lines.map((rawLine, index) => {
+        const line = rawLine.trim();
+        if (!line) return <div key={index} className="h-1" />;
+
+        const heading = line.match(/^(#{1,3})\s+(.+)$/);
+        if (heading) {
+          const size = heading[1].length === 1 ? 'text-lg' : heading[1].length === 2 ? 'text-base' : 'text-sm';
+          return <h3 key={index} className={`${size} pt-2 font-bold text-slate-900 dark:text-white`}>{inlineMarkdown(heading[2])}</h3>;
+        }
+
+        const bullet = line.match(/^[-*]\s+(.+)$/);
+        if (bullet) {
+          return <div key={index} className="flex items-start gap-2 pl-2"><span className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-500" /><p>{inlineMarkdown(bullet[1])}</p></div>;
+        }
+
+        const numbered = line.match(/^(\d+)[.)]\s+(.+)$/);
+        if (numbered) {
+          return <div key={index} className="flex items-start gap-2 pl-2"><span className="mt-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-violet-100 px-1 text-[10px] font-bold text-violet-700">{numbered[1]}</span><p>{inlineMarkdown(numbered[2])}</p></div>;
+        }
+
+        const boldHeading = line.match(/^\*\*(.+)\*\*:?$/);
+        if (boldHeading) {
+          return <h3 key={index} className="pt-2 text-sm font-bold text-slate-900 dark:text-white">{boldHeading[1]}</h3>;
+        }
+
+        return <p key={index}>{inlineMarkdown(line)}</p>;
+      })}
+    </div>
+  );
+}
+
+function inlineMarkdown(value: string): ReactNode {
+  return value.split(/(\*\*[^*]+\*\*)/g).map((part, index) => (
+    part.startsWith('**') && part.endsWith('**')
+      ? <strong key={index} className="font-bold text-slate-900 dark:text-white">{part.slice(2, -2)}</strong>
+      : part
+  ));
 }

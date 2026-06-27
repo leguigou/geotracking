@@ -563,6 +563,9 @@ export interface GeoAuditFinding {
 }
 
 export interface GeoAuditReport {
+  audit_id?: string
+  source_audit_id?: string | null
+  saved_at?: string | null
   url: string
   final_url: string
   brand: string
@@ -597,10 +600,40 @@ export interface GeoAuditReport {
   ai_summary?: string | null
   ai_model?: string | null
   ai_warning?: string | null
+  use_ai?: boolean
 }
 
 export const createGeoAudit = (data: { url: string; brand?: string; use_ai?: boolean }) =>
   client.post<GeoAuditReport>("/geo-audits", data).then((response) => response.data)
+
+export interface GeoAuditHistoryItem {
+  audit_id: string
+  source_audit_id?: string | null
+  requested_url: string
+  final_url: string
+  brand: string
+  use_ai: boolean
+  score: number
+  ai_model?: string | null
+  priority_counts: Record<GeoAuditPriority, number>
+  created_at: string
+}
+
+export interface GeoAuditHistoryPage {
+  items: GeoAuditHistoryItem[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export const getGeoAuditHistory = (limit = 20, offset = 0) =>
+  client.get<GeoAuditHistoryPage>("/geo-audits", { params: { limit, offset } }).then((response) => response.data)
+
+export const getGeoAudit = (auditId: string) =>
+  client.get<GeoAuditReport>(`/geo-audits/${auditId}`).then((response) => response.data)
+
+export const rerunGeoAudit = (auditId: string) =>
+  client.post<GeoAuditReport>(`/geo-audits/${auditId}/rerun`).then((response) => response.data)
 
 // ── Named export groupé pour compatibilité avec les pages existantes ─
 export const api = {
@@ -635,6 +668,9 @@ export const api = {
   getAuditLogs,
   getDashboardOverview,
   createGeoAudit,
+  getGeoAuditHistory,
+  getGeoAudit,
+  rerunGeoAudit,
 }
 
 export default api

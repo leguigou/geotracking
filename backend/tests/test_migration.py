@@ -6,6 +6,25 @@ from alembic.config import Config
 from app.config import settings
 
 
+def _upgrade_database(database) -> None:
+    previous_url = settings.database_url
+    settings.database_url = f"sqlite+aiosqlite:///{database.as_posix()}"
+    try:
+        config = Config("alembic.ini")
+        command.upgrade(config, "head")
+    finally:
+        settings.database_url = previous_url
+
+
+def test_fresh_database_migrations_create_geo_audit_history(tmp_path):
+    database = tmp_path / "fresh.db"
+    _upgrade_database(database)
+    connection = sqlite3.connect(database)
+    tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    connection.close()
+    assert "geo_audits" in tables
+
+
 def test_legacy_database_is_upgraded(tmp_path):
     database = tmp_path / "legacy.db"
     connection = sqlite3.connect(database)
@@ -49,13 +68,7 @@ def test_legacy_database_is_upgraded(tmp_path):
     )
     connection.close()
 
-    previous_url = settings.database_url
-    settings.database_url = f"sqlite+aiosqlite:///{database.as_posix()}"
-    try:
-        config = Config("alembic.ini")
-        command.upgrade(config, "head")
-    finally:
-        settings.database_url = previous_url
+    _upgrade_database(database)
 
     connection = sqlite3.connect(database)
     project_columns = {row[1] for row in connection.execute("PRAGMA table_info(projects)")}
@@ -66,3 +79,4 @@ def test_legacy_database_is_upgraded(tmp_path):
     assert {"description", "last_scheduled_scan_at"} <= project_columns
     assert {"batch_id", "error"} <= result_columns
     assert "scan_batches" in tables
+    assert "geo_audits" in tables

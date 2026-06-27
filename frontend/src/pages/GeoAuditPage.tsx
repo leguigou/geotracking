@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from 'react';
-import api, { type GeoAuditFinding, type GeoAuditPriority, type GeoAuditReport } from '../lib/api';
+import { useEffect, useState, type ReactNode } from 'react';
+import api, { type GeoAuditFinding, type GeoAuditHistoryPage, type GeoAuditPriority, type GeoAuditReport } from '../lib/api';
 
 const priorityMeta: Record<GeoAuditPriority, { label: string; classes: string; dot: string }> = {
   critical: { label: 'Critique', classes: 'border-red-200 bg-red-50 text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200', dot: 'bg-red-500' },
@@ -20,6 +20,26 @@ export default function GeoAuditPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [report, setReport] = useState<GeoAuditReport | null>(null);
+  const [history, setHistory] = useState<GeoAuditHistoryPage | null>(null);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyRefresh, setHistoryRefresh] = useState(0);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [openingId, setOpeningId] = useState<string | null>(null);
+  const [rerunningId, setRerunningId] = useState<string | null>(null);
+  const historyPageSize = 10;
+
+  useEffect(() => {
+    let cancelled = false;
+    setHistoryLoading(true);
+    api.getGeoAuditHistory(historyPageSize, (historyPage - 1) * historyPageSize)
+      .then((result) => {
+        if (!cancelled) setHistory(result);
+      })
+      .finally(() => {
+        if (!cancelled) setHistoryLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [historyPage, historyRefresh]);
 
   const runAudit = async () => {
     if (!url.trim()) return;
@@ -27,11 +47,48 @@ export default function GeoAuditPage() {
     setError('');
     setReport(null);
     try {
-      setReport(await api.createGeoAudit({ url: url.trim(), brand: brand.trim(), use_ai: useAi }));
+      const created = await api.createGeoAudit({ url: url.trim(), brand: brand.trim(), use_ai: useAi });
+      setReport(created);
+      setHistoryPage(1);
+      setHistoryRefresh((value) => value + 1);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openAudit = async (auditId: string) => {
+    setOpeningId(auditId);
+    setError('');
+    try {
+      const stored = await api.getGeoAudit(auditId);
+      setReport(stored);
+      setUrl(stored.url || stored.final_url);
+      setBrand(stored.brand || '');
+      setUseAi(stored.use_ai !== false);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setOpeningId(null);
+    }
+  };
+
+  const rerunAudit = async (auditId: string) => {
+    setRerunningId(auditId);
+    setError('');
+    try {
+      const created = await api.rerunGeoAudit(auditId);
+      setReport(created);
+      setUrl(created.url || created.final_url);
+      setBrand(created.brand || '');
+      setUseAi(created.use_ai !== false);
+      setHistoryPage(1);
+      setHistoryRefresh((value) => value + 1);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setRerunningId(null);
     }
   };
 
@@ -95,7 +152,26 @@ export default function GeoAuditPage() {
         {error && <p role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">{error}</p>}
       </section>
 
-      {report && <AuditReport report={report} onExportPdf={exportPdf} />}
+      <AuditHistory
+        history={history}
+        page={historyPage}
+        pageSize={historyPageSize}
+        loading={historyLoading}
+        openingId={openingId}
+        rerunningId={rerunningId}
+        onPageChange={setHistoryPage}
+        onOpen={openAudit}
+        onRerun={rerunAudit}
+      />
+
+      {report && (
+        <AuditReport
+          report={report}
+          onExportPdf={exportPdf}
+          onRerun={report.audit_id ? () => rerunAudit(report.audit_id!) : undefined}
+          rerunning={rerunningId === report.audit_id}
+        />
+      )}
     </div>
   );
 }
@@ -104,7 +180,106 @@ function Field({ label, htmlFor, children }: { label: string; htmlFor: string; c
   return <div><label htmlFor={htmlFor} className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-200">{label}</label>{children}</div>;
 }
 
-function AuditReport({ report, onExportPdf }: { report: GeoAuditReport; onExportPdf: () => void }) {
+function AuditHistory({
+  history,
+  page,
+  pageSize,
+  loading,
+  openingId,
+  rerunningId,
+  onPageChange,
+  onOpen,
+  onRerun,
+}: {
+  history: GeoAuditHistoryPage | null;
+  page: number;
+  pageSize: number;
+  loading: boolean;
+  openingId: string | null;
+  rerunningId: string | null;
+  onPageChange: (page: number) => void;
+  onOpen: (auditId: string) => void;
+  onRerun: (auditId: string) => void;
+}) {
+  const totalPages = Math.max(1, Math.ceil((history?.total ?? 0) / pageSize));
+  return (
+    <section className="no-print mb-7 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-6">
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-base font-bold text-slate-900 dark:text-white">Historique des audits GEO</h2>
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            Les rapports complets sont sauvegardés dans ton organisation. Ouvre-les ou relance-les avec les mêmes paramètres.
+          </p>
+        </div>
+        <span className="text-xs font-medium text-slate-400">{history?.total ?? 0} rapport(s)</span>
+      </div>
+
+      {loading ? (
+        <p className="py-8 text-center text-sm text-slate-400">Chargement de l’historique…</p>
+      ) : !history?.items.length ? (
+        <p className="rounded-xl border border-dashed border-slate-200 py-8 text-center text-sm text-slate-400 dark:border-slate-700">
+          Aucun audit sauvegardé pour le moment.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {history.items.map((item) => (
+            <article key={item.audit_id} className="flex flex-col gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700 sm:flex-row sm:items-center">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-lg font-black text-slate-700 dark:bg-slate-800 dark:text-white">
+                {Math.round(item.score)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="truncate font-semibold text-slate-900 dark:text-white">{item.final_url}</p>
+                  {item.source_audit_id && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-600 dark:bg-blue-500/10 dark:text-blue-300">Relance</span>}
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  {new Date(item.created_at).toLocaleString('fr-FR')}
+                  {item.brand ? ` · ${item.brand}` : ''}
+                  {item.ai_model ? ` · ${item.ai_model}` : ' · sans résumé IA'}
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-1.5 text-[10px]">
+                  <span className="rounded bg-red-50 px-1.5 py-0.5 text-red-600">Critiques {item.priority_counts.critical || 0}</span>
+                  <span className="rounded bg-orange-50 px-1.5 py-0.5 text-orange-600">Urgents {item.priority_counts.high || 0}</span>
+                  <span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-700">Importants {item.priority_counts.medium || 0}</span>
+                </div>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <button type="button" onClick={() => onOpen(item.audit_id)} disabled={openingId === item.audit_id} className="btn-secondary px-3 py-2 text-xs disabled:opacity-50">
+                  {openingId === item.audit_id ? 'Ouverture…' : 'Ouvrir'}
+                </button>
+                <button type="button" onClick={() => onRerun(item.audit_id)} disabled={rerunningId === item.audit_id} className="btn-primary px-3 py-2 text-xs disabled:opacity-50">
+                  {rerunningId === item.audit_id ? 'Relance…' : 'Relancer'}
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+
+      {(history?.total ?? 0) > pageSize && (
+        <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4 dark:border-slate-700">
+          <span className="text-xs text-slate-400">Page {page}/{totalPages}</span>
+          <div className="flex gap-2">
+            <button type="button" disabled={page <= 1} onClick={() => onPageChange(page - 1)} className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-40">Précédente</button>
+            <button type="button" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)} className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-40">Suivante</button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AuditReport({
+  report,
+  onExportPdf,
+  onRerun,
+  rerunning,
+}: {
+  report: GeoAuditReport;
+  onExportPdf: () => void;
+  onRerun?: () => void;
+  rerunning: boolean;
+}) {
   return (
     <div className="geo-audit-report space-y-6">
       <div className="print-only hidden"><h1>Rapport d’audit GEO</h1><p>{report.final_url}</p></div>
@@ -117,7 +292,14 @@ function AuditReport({ report, onExportPdf }: { report: GeoAuditReport; onExport
           </div>
           <div className="flex items-center gap-4">
             <Score score={report.score} />
-            <button type="button" onClick={onExportPdf} className="no-print btn-primary">Exporter en PDF</button>
+            <div className="no-print flex flex-col gap-2 sm:flex-row">
+              {onRerun && (
+                <button type="button" onClick={onRerun} disabled={rerunning} className="btn-secondary disabled:opacity-50">
+                  {rerunning ? 'Nouvel audit…' : 'Relancer cet audit'}
+                </button>
+              )}
+              <button type="button" onClick={onExportPdf} className="btn-primary">Exporter en PDF</button>
+            </div>
           </div>
         </div>
         <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">

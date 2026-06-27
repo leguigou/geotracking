@@ -193,6 +193,8 @@ def test_geo_audit_endpoint_returns_prioritized_report(client, account, monkeypa
     assert payload["score"] == 62
     assert payload["findings"][0]["priority"] == "high"
     assert payload["ai_summary"] is None
+    assert payload["audit_id"]
+    assert payload["use_ai"] is False
 
     captured = {}
 
@@ -216,9 +218,33 @@ def test_geo_audit_endpoint_returns_prioritized_report(client, account, monkeypa
     assert captured["model"] == "openai/selected-summary-model"
     assert "résumé exécutif" in captured["system_prompt"]
 
+    history = client.get(
+        "/api/geo-audits?limit=10",
+        headers=account["headers"],
+    )
+    assert history.status_code == 200, history.text
+    assert history.json()["total"] == 2
+    assert history.json()["items"][0]["audit_id"] == with_ai.json()["audit_id"]
+
+    stored = client.get(
+        f"/api/geo-audits/{payload['audit_id']}",
+        headers=account["headers"],
+    )
+    assert stored.status_code == 200, stored.text
+    assert stored.json()["findings"][0]["title"] == "Contenu textuel trop léger"
+
+    rerun = client.post(
+        f"/api/geo-audits/{payload['audit_id']}/rerun",
+        headers=account["headers"],
+    )
+    assert rerun.status_code == 200, rerun.text
+    assert rerun.json()["audit_id"] != payload["audit_id"]
+    assert rerun.json()["source_audit_id"] == payload["audit_id"]
+    assert rerun.json()["use_ai"] is False
+
     logs = client.get(
         "/api/audit-logs?search=geo_audit.completed",
         headers=account["headers"],
     ).json()
-    assert logs["total"] == 2
+    assert logs["total"] == 3
     assert logs["items"][0]["details"]["score"] == 62

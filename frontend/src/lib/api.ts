@@ -207,6 +207,106 @@ export interface ScanResultLogEntry {
   }>
 }
 
+export interface PromptStatsValues {
+  total: number
+  successful: number
+  failed: number
+  mentions: number
+  mention_rate: number
+  url_found: number
+  url_rate: number
+  brand_found: number
+  brand_rate: number
+  average_rank?: number | null
+  average_latency_ms?: number | null
+  tokens_used: number
+  cost: number
+  first_scan_at?: string | null
+  last_scan_at?: string | null
+}
+
+export interface PromptStatsData {
+  prompt: {
+    id: string
+    text: string
+    theme?: string | null
+    is_active: boolean
+    created_at?: string | null
+  }
+  overall: PromptStatsValues
+  by_model: Array<PromptStatsValues & { model: string }>
+  recent: Array<{
+    id: string
+    batch_id?: string | null
+    model: string
+    mentioned: boolean
+    has_url: boolean
+    has_brand: boolean
+    rank?: number | null
+    latency_ms?: number | null
+    tokens_used?: number | null
+    cost?: number | null
+    error?: string | null
+    scanned_at?: string | null
+  }>
+}
+
+export interface CompetitorModelStats {
+  model: string
+  mentions: number
+  prompt_count: number
+  best_rank?: number | null
+  average_rank?: number | null
+  first_detected_at?: string | null
+  last_detected_at?: string | null
+}
+
+export interface CompetitorSummary {
+  key: string
+  name: string
+  urls: string[]
+  mentions: number
+  detection_rate: number
+  share_of_competitor_mentions: number
+  prompt_count: number
+  model_count: number
+  best_rank?: number | null
+  average_rank?: number | null
+  first_detected_at?: string | null
+  last_detected_at?: string | null
+  models: CompetitorModelStats[]
+}
+
+export interface CompetitorOccurrence {
+  result_id: string
+  batch_id?: string | null
+  prompt_id: string
+  prompt_text: string
+  theme?: string | null
+  model: string
+  name: string
+  url?: string | null
+  rank?: number | null
+  scanned_at?: string | null
+  evidence: string
+}
+
+export interface CompetitorPage {
+  scanned_responses: number
+  total_competitors: number
+  total_occurrences: number
+  prompts_with_competitors: number
+  models: string[]
+  items: CompetitorSummary[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface CompetitorDetail extends CompetitorSummary {
+  occurrences: CompetitorOccurrence[]
+}
+
 // ── Auth ───────────────────────────────────────────────────────────
 export const login = (email: string, password: string) =>
   client.post<{ access_token: string; refresh_token: string }>("/auth/login", { email, password }).then((r) => r.data)
@@ -280,6 +380,18 @@ export const getResults = (projectId: string | number, limit = 500, offset = 0) 
   client.get<ScanResultLogEntry[]>(`/projects/${projectId}/results`, {
     params: { limit, offset },
   }).then((r) => r.data)
+
+export const getPromptStats = (projectId: string | number, promptId: string | number) =>
+  client.get<PromptStatsData>(`/projects/${projectId}/prompts/${promptId}/stats`).then((r) => r.data)
+
+export const getProjectCompetitors = (
+  projectId: string | number,
+  params: { search?: string; sort?: "mentions" | "recent" | "rank" | "name"; limit?: number; offset?: number } = {},
+) =>
+  client.get<CompetitorPage>(`/projects/${projectId}/competitors`, { params }).then((r) => r.data)
+
+export const getCompetitorDetail = (projectId: string | number, key: string) =>
+  client.get<CompetitorDetail>(`/projects/${projectId}/competitors/detail`, { params: { key } }).then((r) => r.data)
 
 export const getLatestResults = (projectId: string | number) =>
   client.get<LatestResultsData>(`/projects/${projectId}/results/latest`).then((r) => r.data)
@@ -508,6 +620,9 @@ export const api = {
   scanProject,
   cancelScan,
   getResults,
+  getPromptStats,
+  getProjectCompetitors,
+  getCompetitorDetail,
   getLatestResults,
   getScanHistory,
   getScanStatus,

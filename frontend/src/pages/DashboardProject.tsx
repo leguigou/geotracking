@@ -13,6 +13,7 @@ import { api, type LatestResultsData, type HistoryEntry, type OpenRouterModel, t
 import { modelDisplay } from '../lib/modelMap';
 import ManagePrompts from '../components/ManagePrompts';
 import ScanHistory from '../components/ScanHistory';
+import CompetitorAnalytics from '../components/CompetitorAnalytics';
 
 const apiErrorMessage = (error: unknown) => {
   const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
@@ -77,6 +78,7 @@ export default function DashboardProject() {
   const [promptToEdit, setPromptToEdit] = useState<string | number | null>(null);
   const [togglingActive, setTogglingActive] = useState(false);
   const [showScanHistory, setShowScanHistory] = useState(false);
+  const [showCompetitorAnalytics, setShowCompetitorAnalytics] = useState(false);
   const [scanModel, setScanModel] = useState('');
   const [selectedHistoryBatch, setSelectedHistoryBatch] = useState<string | null>(null);
   const [historyScanData, setHistoryScanData] = useState<ScanStatusData | null>(null);
@@ -839,7 +841,12 @@ export default function DashboardProject() {
               </p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-700/50 dark:bg-slate-800/50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Concurrents a surveiller</p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Concurrents à surveiller</p>
+                <button type="button" onClick={() => setShowCompetitorAnalytics(true)} className="text-xs font-semibold text-blue-600 hover:underline dark:text-blue-400">
+                  Voir toutes les statistiques
+                </button>
+              </div>
               {projectInsights.topCompetitors.length === 0 ? (
                 <p className="text-sm text-slate-400 mt-3">Aucun concurrent detecte dans les reponses analysees.</p>
               ) : (
@@ -1038,6 +1045,7 @@ export default function DashboardProject() {
           </p>
         ) : (
           <PromptMatrix
+            projectId={id!}
             prompts={filteredPromptRows}
             providers={activeLlmDefs.map(({ id, label }) => ({ id, label }))}
             onEditPrompt={(promptId) => {
@@ -1144,6 +1152,10 @@ export default function DashboardProject() {
 
       {showScanHistory && id && (
         <ScanHistory projectId={id} onClose={() => setShowScanHistory(false)} />
+      )}
+
+      {showCompetitorAnalytics && id && (
+        <CompetitorAnalytics projectId={id} onClose={() => setShowCompetitorAnalytics(false)} />
       )}
 
       {/* Inspect Modal */}

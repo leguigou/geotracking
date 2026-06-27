@@ -229,7 +229,7 @@ def _competitor_name(item_text: str) -> str:
     text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", item_text)
     text = _URL_RE.sub("", text)
     text = _MARKDOWN_RE.sub("", text).strip()
-    name = re.split(r"\s+(?:—|–|-)\s+|:\s+", text, maxsplit=1)[0]
+    name = re.split(r"\s+(?:—|–|-)(?:\s+|$)|:\s+", text, maxsplit=1)[0]
     return name.strip(" \t\r\n'\"«»,;:!?().[]{}")
 
 

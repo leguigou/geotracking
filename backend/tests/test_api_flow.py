@@ -407,6 +407,203 @@ def test_latest_dashboard_keeps_latest_snapshot_for_each_model(client, account, 
     assert project_row["overall"]["anthropic/claude-haiku-4.5"] == 100.0
 
 
+def test_prompt_stats_detail_history_and_model_comparison(client, account, project):
+    prompt_id = client.post(
+        f"/api/projects/{project['id']}/prompts",
+        headers=account["headers"],
+        json={"texts": ["Quel robot de piscine choisir ?"], "theme": "Piscine"},
+    ).json()[0]["id"]
+    now = datetime.now(timezone.utc)
+
+    async def seed_prompt_history():
+        async with async_session() as db:
+            first_batch = ScanBatch(
+                project_id=uuid.UUID(project["id"]),
+                status="completed",
+                total_jobs=2,
+                completed_jobs=2,
+                created_at=now - timedelta(days=1),
+                completed_at=now - timedelta(days=1),
+            )
+            second_batch = ScanBatch(
+                project_id=uuid.UUID(project["id"]),
+                status="completed",
+                total_jobs=1,
+                completed_jobs=1,
+                failed_jobs=1,
+                created_at=now,
+                completed_at=now,
+            )
+            db.add_all([first_batch, second_batch])
+            await db.flush()
+            db.add_all([
+                ScanResult(
+                    batch_id=first_batch.id,
+                    project_id=uuid.UUID(project["id"]),
+                    prompt_id=uuid.UUID(prompt_id),
+                    model="openai/gpt-5.4-mini",
+                    response_text="Cabesto est cité en première position",
+                    has_url=True,
+                    has_brand=True,
+                    rank=1,
+                    latency_ms=1000,
+                    tokens_used=100,
+                    cost=0.001,
+                    scanned_at=now - timedelta(days=1),
+                ),
+                ScanResult(
+                    batch_id=first_batch.id,
+                    project_id=uuid.UUID(project["id"]),
+                    prompt_id=uuid.UUID(prompt_id),
+                    model="anthropic/claude-haiku-4.5",
+                    response_text="Une autre marque est recommandée",
+                    has_url=False,
+                    has_brand=False,
+                    latency_ms=2000,
+                    tokens_used=200,
+                    cost=0.002,
+                    scanned_at=now - timedelta(days=1),
+                ),
+                ScanResult(
+                    batch_id=second_batch.id,
+                    project_id=uuid.UUID(project["id"]),
+                    prompt_id=uuid.UUID(prompt_id),
+                    model="openai/gpt-5.4-mini",
+                    response_text="",
+                    has_url=False,
+                    has_brand=False,
+                    latency_ms=3000,
+                    tokens_used=0,
+                    cost=0,
+                    error="Timeout OpenRouter",
+                    scanned_at=now,
+                ),
+            ])
+            await db.commit()
+
+    asyncio.run(seed_prompt_history())
+    response = client.get(
+        f"/api/projects/{project['id']}/prompts/{prompt_id}/stats",
+        headers=account["headers"],
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["prompt"]["theme"] == "Piscine"
+    assert payload["overall"]["total"] == 3
+    assert payload["overall"]["successful"] == 2
+    assert payload["overall"]["failed"] == 1
+    assert payload["overall"]["mentions"] == 1
+    assert payload["overall"]["mention_rate"] == 50.0
+    assert payload["overall"]["average_rank"] == 1.0
+    assert payload["overall"]["tokens_used"] == 300
+    assert payload["overall"]["cost"] == 0.003
+    assert len(payload["by_model"]) == 2
+    openai = next(item for item in payload["by_model"] if item["model"] == "openai/gpt-5.4-mini")
+    assert openai["total"] == 2
+    assert openai["successful"] == 1
+    assert openai["mention_rate"] == 100.0
+    assert payload["recent"][0]["error"] == "Timeout OpenRouter"
+
+
+def test_competitor_register_lists_stats_and_detection_context(client, account, project):
+    prompt_ids = [
+        client.post(
+            f"/api/projects/{project['id']}/prompts",
+            headers=account["headers"],
+            json={"texts": [text], "theme": "Piscine"},
+        ).json()[0]["id"]
+        for text in (
+            "Où acheter un robot de piscine à Aubagne ?",
+            "Quelles marques de robots piscine recommander ?",
+        )
+    ]
+    now = datetime.now(timezone.utc)
+
+    async def seed_competitors():
+        async with async_session() as db:
+            batch = ScanBatch(
+                project_id=uuid.UUID(project["id"]),
+                status="completed",
+                total_jobs=3,
+                completed_jobs=3,
+                created_at=now,
+                completed_at=now,
+            )
+            db.add(batch)
+            await db.flush()
+            db.add_all([
+                ScanResult(
+                    batch_id=batch.id,
+                    project_id=uuid.UUID(project["id"]),
+                    prompt_id=uuid.UUID(prompt_ids[0]),
+                    model="openai/gpt-5.4-mini",
+                    response_text=(
+                        "1. **Cabesto** — le spécialiste local\n"
+                        "2. **Leroy Merlin** — https://www.leroymerlin.fr/robot-piscine"
+                    ),
+                    has_brand=True,
+                    rank=1,
+                    scanned_at=now,
+                ),
+                ScanResult(
+                    batch_id=batch.id,
+                    project_id=uuid.UUID(project["id"]),
+                    prompt_id=uuid.UUID(prompt_ids[0]),
+                    model="anthropic/claude-haiku-4.5",
+                    response_text="1. **Leroy Merlin** — https://www.leroymerlin.fr\n2. **Cabesto**",
+                    has_brand=True,
+                    rank=2,
+                    scanned_at=now - timedelta(minutes=1),
+                ),
+                ScanResult(
+                    batch_id=batch.id,
+                    project_id=uuid.UUID(project["id"]),
+                    prompt_id=uuid.UUID(prompt_ids[1]),
+                    model="openai/gpt-5.4-mini",
+                    response_text="1. **Piscinelle** — une marque spécialisée\n2. **Cabesto**",
+                    has_brand=True,
+                    rank=2,
+                    scanned_at=now - timedelta(minutes=2),
+                ),
+            ])
+            await db.commit()
+
+    asyncio.run(seed_competitors())
+    response = client.get(
+        f"/api/projects/{project['id']}/competitors?limit=100",
+        headers=account["headers"],
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["scanned_responses"] == 3
+    assert payload["total_occurrences"] == 3
+    assert payload["total"] == 2
+    leroy = next(item for item in payload["items"] if item["name"] == "Leroy Merlin")
+    assert leroy["mentions"] == 2
+    assert leroy["prompt_count"] == 1
+    assert leroy["model_count"] == 2
+    assert leroy["best_rank"] == 1
+    assert {item["model"] for item in leroy["models"]} == {
+        "openai/gpt-5.4-mini",
+        "anthropic/claude-haiku-4.5",
+    }
+
+    detail = client.get(
+        f"/api/projects/{project['id']}/competitors/detail",
+        headers=account["headers"],
+        params={"key": leroy["key"]},
+    )
+    assert detail.status_code == 200, detail.text
+    occurrences = detail.json()["occurrences"]
+    assert len(occurrences) == 2
+    assert occurrences[0]["prompt_text"] == "Où acheter un robot de piscine à Aubagne ?"
+    assert occurrences[0]["model"] in {
+        "openai/gpt-5.4-mini",
+        "anthropic/claude-haiku-4.5",
+    }
+    assert "Leroy Merlin" in occurrences[0]["evidence"]
+
+
 def test_prompt_delete_is_tenant_safe_and_project_delete_cascades_explicitly(client, account, project):
     prompt = client.post(
         f"/api/projects/{project['id']}/prompts",

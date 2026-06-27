@@ -9,7 +9,7 @@ from arq.connections import RedisSettings
 from arq.jobs import Job
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import and_, desc, func, or_, select
+from sqlalchemy import and_, case, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -22,6 +22,7 @@ from app.services.audit import log_action
 from app.services.openrouter import resolve_legacy_project_models
 from app.services.scan_queue import enqueue_scan
 from app.services.scanner import calculate_sov, run_assertions
+from app.services.competitor_analytics import aggregate_competitors
 
 router = APIRouter(prefix="/projects", tags=["scans"])
 
@@ -88,6 +89,36 @@ class ProviderStats(BaseModel):
     latest_at: Optional[datetime] = None
 
 
+def _rate(value: int, denominator: int) -> float:
+    return round(value / denominator * 100, 1) if denominator else 0.0
+
+
+def _prompt_stats_payload(row) -> dict:
+    total = int(row.total or 0)
+    failed = int(row.failed or 0)
+    successful = max(0, total - failed)
+    mentions = int(row.mentions or 0)
+    url_found = int(row.url_found or 0)
+    brand_found = int(row.brand_found or 0)
+    return {
+        "total": total,
+        "successful": successful,
+        "failed": failed,
+        "mentions": mentions,
+        "mention_rate": _rate(mentions, successful),
+        "url_found": url_found,
+        "url_rate": _rate(url_found, successful),
+        "brand_found": brand_found,
+        "brand_rate": _rate(brand_found, successful),
+        "average_rank": round(float(row.average_rank), 1) if row.average_rank is not None else None,
+        "average_latency_ms": round(float(row.average_latency_ms)) if row.average_latency_ms is not None else None,
+        "tokens_used": int(row.tokens_used or 0),
+        "cost": round(float(row.cost or 0), 6),
+        "first_scan_at": row.first_scan_at.isoformat() if row.first_scan_at else None,
+        "last_scan_at": row.last_scan_at.isoformat() if row.last_scan_at else None,
+    }
+
+
 class LatestScanResponse(BaseModel):
     batch: ScanBatchResponse
     scan_date: datetime
@@ -106,6 +137,22 @@ async def _owned_project(db: AsyncSession, project_id: uuid.UUID, org_id) -> Pro
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     return project
+
+
+async def _project_competitor_analytics(
+    db: AsyncSession,
+    project: Project,
+) -> dict:
+    result = await db.execute(
+        select(ScanResult, Prompt)
+        .join(Prompt, Prompt.id == ScanResult.prompt_id)
+        .where(
+            ScanResult.project_id == project.id,
+            Prompt.project_id == project.id,
+        )
+        .order_by(desc(ScanResult.scanned_at))
+    )
+    return aggregate_competitors(project, list(result.all()))
 
 
 @router.post("/{project_id}/scan", status_code=status.HTTP_202_ACCEPTED)
@@ -437,6 +484,163 @@ def _summarise_results(
         average_rank=round(sum(ranks) / len(ranks), 1) if ranks else None,
     )
     return overall, provider_stats, prompts, sov
+
+
+@router.get("/{project_id}/competitors")
+async def list_project_competitors(
+    project_id: str,
+    search: str | None = Query(default=None, max_length=200),
+    sort: str = Query(default="mentions", pattern="^(mentions|recent|rank|name)$"),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    org_id=Depends(get_current_organization),
+    db: AsyncSession = Depends(get_db),
+):
+    """All competitors detected across the complete project scan history."""
+    project_uid = _resolve_uuid(project_id)
+    project = await _owned_project(db, project_uid, org_id)
+    analytics = await _project_competitor_analytics(db, project)
+    competitors = analytics.pop("competitors")
+
+    if search and (term := search.strip().casefold()):
+        competitors = [
+            item for item in competitors
+            if term in item["name"].casefold()
+            or any(term in url.casefold() for url in item["urls"])
+            or any(term in model["model"].casefold() for model in item["models"])
+        ]
+    if sort == "recent":
+        competitors.sort(key=lambda item: item["last_detected_at"] or "", reverse=True)
+    elif sort == "rank":
+        competitors.sort(key=lambda item: (item["best_rank"] is None, item["best_rank"] or 999, -item["mentions"]))
+    elif sort == "name":
+        competitors.sort(key=lambda item: item["name"].casefold())
+    else:
+        competitors.sort(key=lambda item: (-item["mentions"], item["name"].casefold()))
+
+    total = len(competitors)
+    page = []
+    for competitor in competitors[offset:offset + limit]:
+        summary = {key: value for key, value in competitor.items() if key != "occurrences"}
+        page.append(summary)
+    return {
+        **analytics,
+        "items": page,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@router.get("/{project_id}/competitors/detail")
+async def get_project_competitor_detail(
+    project_id: str,
+    key: str = Query(min_length=3, max_length=500),
+    org_id=Depends(get_current_organization),
+    db: AsyncSession = Depends(get_db),
+):
+    """Every exact occurrence of one competitor with prompt/model/date context."""
+    project_uid = _resolve_uuid(project_id)
+    project = await _owned_project(db, project_uid, org_id)
+    analytics = await _project_competitor_analytics(db, project)
+    competitor = next(
+        (item for item in analytics["competitors"] if item["key"] == key),
+        None,
+    )
+    if not competitor:
+        raise HTTPException(status_code=404, detail="Competitor not found")
+    return competitor
+
+
+@router.get("/{project_id}/prompts/{prompt_id}/stats")
+async def get_prompt_stats(
+    project_id: str,
+    prompt_id: str,
+    org_id=Depends(get_current_organization),
+    db: AsyncSession = Depends(get_db),
+):
+    """Detailed historical performance for one prompt, loaded on demand."""
+    project_uid = _resolve_uuid(project_id)
+    prompt_uid = _resolve_uuid(prompt_id)
+    await _owned_project(db, project_uid, org_id)
+    prompt_result = await db.execute(
+        select(Prompt).where(Prompt.id == prompt_uid, Prompt.project_id == project_uid)
+    )
+    prompt = prompt_result.scalar_one_or_none()
+    if not prompt:
+        raise HTTPException(status_code=404, detail="Prompt not found")
+
+    failed_case = case((ScanResult.error.is_not(None), 1), else_=0)
+    mention_case = case((or_(ScanResult.has_url.is_(True), ScanResult.has_brand.is_(True)), 1), else_=0)
+    url_case = case((ScanResult.has_url.is_(True), 1), else_=0)
+    brand_case = case((ScanResult.has_brand.is_(True), 1), else_=0)
+    aggregate_columns = (
+        func.count(ScanResult.id).label("total"),
+        func.sum(failed_case).label("failed"),
+        func.sum(mention_case).label("mentions"),
+        func.sum(url_case).label("url_found"),
+        func.sum(brand_case).label("brand_found"),
+        func.avg(ScanResult.rank).label("average_rank"),
+        func.avg(ScanResult.latency_ms).label("average_latency_ms"),
+        func.sum(ScanResult.tokens_used).label("tokens_used"),
+        func.sum(ScanResult.cost).label("cost"),
+        func.min(ScanResult.scanned_at).label("first_scan_at"),
+        func.max(ScanResult.scanned_at).label("last_scan_at"),
+    )
+    filters = (
+        ScanResult.project_id == project_uid,
+        ScanResult.prompt_id == prompt_uid,
+    )
+
+    overall_result = await db.execute(select(*aggregate_columns).where(*filters))
+    overall = _prompt_stats_payload(overall_result.one())
+
+    by_model_result = await db.execute(
+        select(ScanResult.model, *aggregate_columns)
+        .where(*filters)
+        .group_by(ScanResult.model)
+        .order_by(desc(func.max(ScanResult.scanned_at)))
+    )
+    by_model = [
+        {"model": row.model, **_prompt_stats_payload(row)}
+        for row in by_model_result.all()
+    ]
+
+    recent_result = await db.execute(
+        select(ScanResult)
+        .where(*filters)
+        .order_by(desc(ScanResult.scanned_at), desc(ScanResult.id))
+        .limit(10)
+    )
+    recent = [
+        {
+            "id": str(result.id),
+            "batch_id": str(result.batch_id) if result.batch_id else None,
+            "model": result.model,
+            "mentioned": bool(result.has_url or result.has_brand),
+            "has_url": result.has_url,
+            "has_brand": result.has_brand,
+            "rank": result.rank,
+            "latency_ms": result.latency_ms,
+            "tokens_used": result.tokens_used,
+            "cost": result.cost,
+            "error": result.error,
+            "scanned_at": result.scanned_at.isoformat() if result.scanned_at else None,
+        }
+        for result in recent_result.scalars().all()
+    ]
+    return {
+        "prompt": {
+            "id": str(prompt.id),
+            "text": prompt.text,
+            "theme": prompt.theme,
+            "is_active": prompt.is_active,
+            "created_at": prompt.created_at.isoformat() if prompt.created_at else None,
+        },
+        "overall": overall,
+        "by_model": by_model,
+        "recent": recent,
+    }
 
 
 @router.get("/{project_id}/results/latest", response_model=LatestScanResponse)

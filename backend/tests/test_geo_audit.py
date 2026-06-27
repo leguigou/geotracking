@@ -1,5 +1,6 @@
 import asyncio
 
+import httpx
 import pytest
 
 from app.services.geo_audit import (
@@ -7,6 +8,7 @@ from app.services.geo_audit import (
     _validate_public_url,
     build_findings,
     parse_page,
+    safe_get,
 )
 
 
@@ -61,6 +63,26 @@ def test_geo_audit_extracts_page_signals_and_prioritizes_blockers():
 def test_geo_audit_rejects_private_network_urls():
     with pytest.raises(AuditFetchError, match="non publique"):
         asyncio.run(_validate_public_url("http://127.0.0.1/admin"))
+
+
+def test_geo_audit_streams_large_pages_with_a_configurable_limit(monkeypatch):
+    async def allow_test_url(url):
+        return url
+
+    monkeypatch.setattr("app.services.geo_audit._validate_public_url", allow_test_url)
+    body = b"<html><body>" + (b"x" * 3_000_000) + b"</body></html>"
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(200, content=body, headers={"content-type": "text/html"})
+    )
+
+    async def run():
+        async with httpx.AsyncClient(transport=transport) as client:
+            response, _ = await safe_get(client, "https://example.test", max_bytes=4_000_000)
+            assert len(response.content) == len(body)
+            with pytest.raises(AuditFetchError, match="2 Mo"):
+                await safe_get(client, "https://example.test", max_bytes=2_000_000)
+
+    asyncio.run(run())
 
 
 def test_geo_audit_endpoint_returns_prioritized_report(client, account, monkeypatch):

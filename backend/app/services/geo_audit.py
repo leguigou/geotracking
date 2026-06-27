@@ -15,7 +15,10 @@ from urllib.parse import urljoin, urlparse
 import httpx
 
 
-MAX_DOCUMENT_BYTES = 2_000_000
+MAX_PAGE_BYTES = 15_000_000
+MAX_ROBOTS_BYTES = 1_000_000
+MAX_SITEMAP_BYTES = 25_000_000
+MAX_LLMS_BYTES = 2_000_000
 MAX_REDIRECTS = 5
 AUDIT_USER_AGENT = "GEOTrack-Audit/1.0 (+https://geotrack.ai)"
 LLM_BOTS = ("GPTBot", "ChatGPT-User", "ClaudeBot", "PerplexityBot", "Google-Extended")
@@ -181,30 +184,55 @@ async def _validate_public_url(url: str) -> str:
     return parsed.geturl()
 
 
-async def safe_get(client: httpx.AsyncClient, url: str) -> tuple[httpx.Response, str]:
+async def safe_get(
+    client: httpx.AsyncClient,
+    url: str,
+    max_bytes: int = MAX_PAGE_BYTES,
+) -> tuple[httpx.Response, str]:
     current = url
     for _ in range(MAX_REDIRECTS + 1):
         current = await _validate_public_url(current)
-        response = await client.get(
+        async with client.stream(
+            "GET",
             current,
             headers={"User-Agent": AUDIT_USER_AGENT, "Accept": "text/html,application/xml,text/plain;q=0.9,*/*;q=0.1"},
             follow_redirects=False,
-        )
-        if response.status_code not in {301, 302, 303, 307, 308}:
-            if len(response.content) > MAX_DOCUMENT_BYTES:
-                raise AuditFetchError("Le document dépasse la taille maximale analysable de 2 Mo")
-            return response, current
-        location = response.headers.get("location")
+        ) as streamed:
+            status_code = streamed.status_code
+            headers = streamed.headers
+            request = streamed.request
+            location = headers.get("location")
+            if status_code not in {301, 302, 303, 307, 308}:
+                declared_size = headers.get("content-length")
+                if declared_size and declared_size.isdigit() and int(declared_size) > max_bytes:
+                    limit_mb = max_bytes / 1_000_000
+                    raise AuditFetchError(f"Le document dépasse la taille maximale analysable de {limit_mb:g} Mo")
+                content = bytearray()
+                async for chunk in streamed.aiter_bytes():
+                    content.extend(chunk)
+                    if len(content) > max_bytes:
+                        limit_mb = max_bytes / 1_000_000
+                        raise AuditFetchError(f"Le document dépasse la taille maximale analysable de {limit_mb:g} Mo")
+                return httpx.Response(
+                    status_code,
+                    headers=headers,
+                    content=bytes(content),
+                    request=request,
+                ), current
         if not location:
-            return response, current
+            return httpx.Response(status_code, headers=headers, content=b"", request=request), current
         current = urljoin(current, location)
     raise AuditFetchError("L’URL effectue trop de redirections")
 
 
-async def optional_safe_get(client: httpx.AsyncClient, url: str) -> tuple[httpx.Response, str]:
+async def optional_safe_get(
+    client: httpx.AsyncClient,
+    url: str,
+    max_bytes: int,
+) -> tuple[httpx.Response, str]:
     """Fetch an auxiliary audit resource without aborting the whole report."""
     try:
-        return await safe_get(client, url)
+        return await safe_get(client, url, max_bytes=max_bytes)
     except (AuditFetchError, httpx.HTTPError):
         request = httpx.Request("GET", url)
         return httpx.Response(599, request=request, text=""), url
@@ -321,8 +349,8 @@ async def audit_url(url: str, brand: str = "") -> dict:
     if "://" not in candidate:
         candidate = f"https://{candidate}"
     candidate = await _validate_public_url(candidate)
-    async with httpx.AsyncClient(timeout=httpx.Timeout(20, connect=8)) as client:
-        page_response, final_url = await safe_get(client, candidate)
+    async with httpx.AsyncClient(timeout=httpx.Timeout(30, connect=8)) as client:
+        page_response, final_url = await safe_get(client, candidate, max_bytes=MAX_PAGE_BYTES)
         content_type = page_response.headers.get("content-type", "")
         if "html" not in content_type.lower() and not page_response.text.lstrip().lower().startswith(("<!doctype html", "<html")):
             raise AuditFetchError("L’URL ne renvoie pas une page HTML analysable")
@@ -330,13 +358,25 @@ async def audit_url(url: str, brand: str = "") -> dict:
         parsed = urlparse(final_url)
         root = f"{parsed.scheme}://{parsed.netloc}"
 
-        robots_response, robots_url = await optional_safe_get(client, urljoin(root, "/robots.txt"))
+        robots_response, robots_url = await optional_safe_get(
+            client,
+            urljoin(root, "/robots.txt"),
+            max_bytes=MAX_ROBOTS_BYTES,
+        )
         robots_content = robots_response.text if robots_response.status_code < 400 else ""
         robots = _robots_rules(robots_content)
         sitemap_url = robots["sitemaps"][0] if robots["sitemaps"] else urljoin(root, "/sitemap.xml")
-        sitemap_response, final_sitemap_url = await optional_safe_get(client, sitemap_url)
+        sitemap_response, final_sitemap_url = await optional_safe_get(
+            client,
+            sitemap_url,
+            max_bytes=MAX_SITEMAP_BYTES,
+        )
         sitemap_count = len(re.findall(r"<loc(?:\s[^>]*)?>", sitemap_response.text, re.IGNORECASE)) if sitemap_response.status_code < 400 else 0
-        llms_response, llms_url = await optional_safe_get(client, urljoin(root, "/llms.txt"))
+        llms_response, llms_url = await optional_safe_get(
+            client,
+            urljoin(root, "/llms.txt"),
+            max_bytes=MAX_LLMS_BYTES,
+        )
 
     findings = build_findings(
         signals,

@@ -10,6 +10,7 @@ const DashboardProject = lazy(() => import("./pages/DashboardProject"))
 const CreateProject = lazy(() => import("./pages/CreateProject"))
 const SettingsPage = lazy(() => import("./pages/SettingsPage"))
 const AuditLogsPage = lazy(() => import("./pages/AuditLogsPage"))
+const GeoAuditPage = lazy(() => import("./pages/GeoAuditPage"))
 const NotFound = lazy(() => import("./pages/NotFound"))
 
 function LoadingScreen() {
@@ -39,6 +40,7 @@ export default function AppRoutes() {
             <Route path="/project/:id" element={<DashboardProject />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/audit" element={<AuditLogsPage />} />
+            <Route path="/geo-audit" element={<GeoAuditPage />} />
           </Route>
         </Route>
         <Route path="*" element={<NotFound />} />

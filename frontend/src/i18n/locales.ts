@@ -1,6 +1,6 @@
 export const translations = {
   fr: {
-    'nav.dashboard': 'Dashboard', 'nav.projects': 'Projets', 'nav.create': 'Nouveau Projet', 'nav.settings': 'Paramètres', 'nav.audit': 'Logs',
+    'nav.dashboard': 'Dashboard', 'nav.projects': 'Projets', 'nav.create': 'Nouveau Projet', 'nav.geoAudit': 'Audit GEO', 'nav.settings': 'Paramètres', 'nav.audit': 'Logs',
     'theme': 'Thème',
     'login.subtitle': 'GEO Intelligence pour votre agence',
     'login.tabLogin': 'Connexion', 'login.tabRegister': 'Inscription',
@@ -52,7 +52,7 @@ export const translations = {
     'login.btnLogout': 'Déconnexion', 'login.error': 'Erreur de connexion. Vérifiez vos identifiants.', 'nav.logout': 'Déconnexion',
   },
   en: {
-    'nav.dashboard': 'Dashboard', 'nav.projects': 'Projects', 'nav.create': 'New Project', 'nav.settings': 'Settings', 'nav.audit': 'Logs',
+    'nav.dashboard': 'Dashboard', 'nav.projects': 'Projects', 'nav.create': 'New Project', 'nav.geoAudit': 'GEO Audit', 'nav.settings': 'Settings', 'nav.audit': 'Logs',
     'theme': 'Theme',
     'login.subtitle': 'GEO Intelligence for your agency',
     'login.tabLogin': 'Sign In', 'login.tabRegister': 'Sign Up',

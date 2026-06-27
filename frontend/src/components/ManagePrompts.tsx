@@ -6,11 +6,12 @@ import type { PromptData } from '../lib/api';
 interface Props {
   projectId: string;
   prompts: PromptData[];
+  initialPromptId?: string | number | null;
   onClose: () => void;
   onRefresh: () => void;
 }
 
-export default function ManagePrompts({ projectId, prompts, onClose, onRefresh }: Props) {
+export default function ManagePrompts({ projectId, prompts, initialPromptId, onClose, onRefresh }: Props) {
   const { t } = useTranslation();
   const [localPrompts, setLocalPrompts] = useState<PromptData[]>(prompts);
   const [newTheme, setNewTheme] = useState('');
@@ -43,6 +44,16 @@ export default function ManagePrompts({ projectId, prompts, onClose, onRefresh }
   useEffect(() => {
     setLocalPrompts(prompts);
   }, [prompts]);
+
+  useEffect(() => {
+    if (initialPromptId == null) return;
+    const selected = prompts.find((prompt) => String(prompt.id) === String(initialPromptId));
+    if (!selected) return;
+    setEditingId(selected.id);
+    setEditText(selected.text);
+    setEditTheme(selected.theme ?? '');
+    setEditActive(selected.is_active !== false);
+  }, [initialPromptId, prompts]);
 
   const handleRewrite = async () => {
     if (!newText.trim()) return;

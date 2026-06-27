@@ -11,6 +11,7 @@ from app.api.scans import router as scans_router
 from app.api.settings import router as settings_router
 from app.api.audit import router as audit_router
 from app.api.dashboard import router as dashboard_router
+from app.api.geo_audits import router as geo_audits_router
 
 
 @asynccontextmanager
@@ -75,6 +76,7 @@ app.include_router(scans_router, prefix="/api")
 app.include_router(settings_router, prefix="/api")
 app.include_router(audit_router, prefix="/api")
 app.include_router(dashboard_router, prefix="/api")
+app.include_router(geo_audits_router, prefix="/api")
 
 
 @app.get("/api/health")

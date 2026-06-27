@@ -6,6 +6,7 @@ const actionLabels: Record<string, string> = {
   'project.updated': 'Modification du projet',
   'project.deleted': 'Suppression du projet',
   'prompt.updated': 'Modification du prompt',
+  'geo_audit.completed': 'Audit GEO terminé',
   'scan.started': 'Scan lancé',
   'scan.cancelled': 'Scan annulé',
 };

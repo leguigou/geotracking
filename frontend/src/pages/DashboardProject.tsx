@@ -49,6 +49,8 @@ interface PromptRowData {
   id: string;
   prompt: string;
   date: string;
+  theme?: string;
+  createdAt?: string;
   [key: string]: string | number | undefined;
 }
 
@@ -72,6 +74,7 @@ export default function DashboardProject() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showPromptsManager, setShowPromptsManager] = useState(false);
+  const [promptToEdit, setPromptToEdit] = useState<string | number | null>(null);
   const [togglingActive, setTogglingActive] = useState(false);
   const [showScanHistory, setShowScanHistory] = useState(false);
   const [scanModel, setScanModel] = useState('');
@@ -239,6 +242,8 @@ export default function DashboardProject() {
       const row: PromptRowData = {
         id: promptId,
         prompt: `"${String(prompt.text ?? '')}"`,
+        theme: String(prompt.theme ?? ''),
+        createdAt: String(prompt.created_at ?? ''),
         date: latest?.scan_date
           ? new Date(latest.scan_date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
           : '',
@@ -704,7 +709,18 @@ export default function DashboardProject() {
               const date = new Date(entry.scan_date);
               const dateStr = date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
               const timeStr = date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-              const sovKeys = Object.keys(entry).filter(k => !['batch_id', 'scan_date', 'status', 'failed_jobs', 'provider_stats'].includes(k));
+              const metadataKeys = new Set([
+                'batch_id',
+                'scan_date',
+                'status',
+                'total_jobs',
+                'completed_jobs',
+                'failed_jobs',
+                'provider_stats',
+              ]);
+              const sovKeys = entry.provider_stats
+                ? Object.keys(entry.provider_stats)
+                : Object.keys(entry).filter((key) => !metadataKeys.has(key) && typeof entry[key] === 'number');
               return (
                 <div
                   key={batchId}
@@ -745,7 +761,10 @@ export default function DashboardProject() {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
+                        {entry.completed_jobs ?? 0}/{entry.total_jobs ?? 0} réponses
+                      </span>
                       {sovKeys.map(key => (
                         <span key={key} className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400">
                           {key.split('/').pop()}: {Number(entry[key]) || 0}%
@@ -1018,7 +1037,14 @@ export default function DashboardProject() {
             {selectedTheme ? `Aucun prompt pour la thématique "${selectedTheme}".` : 'Aucun résultat disponible. Lance un scan pour voir la matrice.'}
           </p>
         ) : (
-          <PromptMatrix prompts={filteredPromptRows} providers={activeLlmDefs.map(({ id, label }) => ({ id, label }))} />
+          <PromptMatrix
+            prompts={filteredPromptRows}
+            providers={activeLlmDefs.map(({ id, label }) => ({ id, label }))}
+            onEditPrompt={(promptId) => {
+              setPromptToEdit(promptId);
+              setShowPromptsManager(true);
+            }}
+          />
         )}
       </div>
 
@@ -1107,7 +1133,11 @@ export default function DashboardProject() {
         <ManagePrompts
           projectId={id}
           prompts={Array.isArray(promptsRaw) ? promptsRaw : []}
-          onClose={() => setShowPromptsManager(false)}
+          initialPromptId={promptToEdit}
+          onClose={() => {
+            setShowPromptsManager(false);
+            setPromptToEdit(null);
+          }}
           onRefresh={refetchPrompts}
         />
       )}

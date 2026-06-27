@@ -30,6 +30,18 @@ body {
   border: 1px solid rgba(51,65,85,.5);
 }
 
+@media print {
+  @page { size: A4; margin: 12mm; }
+  body { background: white !important; color: #0f172a !important; }
+  aside, .no-print, button[aria-label="Menu"] { display: none !important; }
+  main { margin: 0 !important; padding: 0 !important; }
+  .print-only { display: block !important; margin-bottom: 16px; }
+  .geo-audit-report { font-size: 10pt; }
+  .geo-audit-report section,
+  .audit-finding,
+  .audit-technical { break-inside: avoid; box-shadow: none !important; }
+}
+
 .stat-card { transition: all .2s ease; }
 .stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 25px -8px rgba(0,0,0,.12); }
 .dark .stat-card:hover { box-shadow: 0 8px 25px -8px rgba(0,0,0,.4); }

@@ -440,6 +440,56 @@ export const getAuditLogs = ({
     params: { limit, offset, search: search.trim() || undefined },
   }).then((r) => r.data)
 
+export type GeoAuditPriority = "critical" | "high" | "medium" | "low"
+
+export interface GeoAuditFinding {
+  priority: GeoAuditPriority
+  category: string
+  title: string
+  evidence: string
+  recommendation: string
+}
+
+export interface GeoAuditReport {
+  url: string
+  final_url: string
+  brand: string
+  generated_at: string
+  score: number
+  priority_counts: Record<GeoAuditPriority, number>
+  findings: GeoAuditFinding[]
+  page: {
+    status: number
+    content_type?: string | null
+    title: string
+    description: string
+    canonical: string
+    language: string
+    robots_meta: string
+    word_count: number
+    headings: Record<string, number>
+    h1: string[]
+    image_count: number
+    images_without_alt: number
+    json_ld_types: string[]
+  }
+  robots: {
+    url: string
+    status: number
+    blocks_all: boolean
+    bots: Record<string, "allowed" | "blocked">
+    sitemaps: string[]
+  }
+  sitemap: { url: string; status: number; url_count: number }
+  llms_txt: { url: string; status: number; present: boolean }
+  ai_summary?: string | null
+  ai_model?: string | null
+  ai_warning?: string | null
+}
+
+export const createGeoAudit = (data: { url: string; brand?: string; use_ai?: boolean }) =>
+  client.post<GeoAuditReport>("/geo-audits", data).then((response) => response.data)
+
 // ── Named export groupé pour compatibilité avec les pages existantes ─
 export const api = {
   login,
@@ -469,6 +519,7 @@ export const api = {
   analyzeResponse,
   getAuditLogs,
   getDashboardOverview,
+  createGeoAudit,
 }
 
 export default api
